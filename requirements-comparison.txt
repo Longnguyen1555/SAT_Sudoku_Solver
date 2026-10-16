@@ -1,4 +1,0 @@
--r requirements.txt
-ortools>=9.10
-# CPLEX CP/MIP: install docplex and IBM CPLEX + CP Optimizer runtimes separately.
-

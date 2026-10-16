@@ -1,2 +1,0 @@
-# Mandatory SAT backend. Do NOT install the unrelated `pysat` package.
-python-sat>=1.8.dev20

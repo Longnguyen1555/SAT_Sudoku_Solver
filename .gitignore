@@ -1,6 +1,6 @@
-__pycache__/
-.pytest_cache/
-*.pyc
-data/*.csv
-results/
 .venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/
+results/

@@ -1,0 +1,375 @@
+% !TeX program = pdflatex
+% !TeX encoding = UTF-8
+% BÁO CÁO ASSIGNMENT 1 -- SUDOKU SOLVER
+% Chỉnh sửa thông tin sinh viên và thông tin môi trường ở những vị trí [BỔ SUNG].
+% Biên dịch: pdflatex main.tex; pdflatex main.tex (tài liệu tham khảo nằm trong main.tex)
+% Lớp tài liệu theo yêu cầu môn học, không phải bản thảo gửi tạp chí.
+\documentclass[a4paper,fleqn]{cas-sc}
+
+% ===== Tiếng Việt: biên dịch bằng pdfLaTeX, tương thích CAS/STIX =====
+\usepackage[utf8]{inputenc}
+\usepackage[T5]{fontenc}
+\usepackage[vietnamese]{babel}
+
+
+% ===== Gói cho bảng, công thức, mã lệnh =====
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs,tabularx,longtable}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{float}
+\usepackage{microtype}
+\usepackage{fancyvrb}
+\usepackage{ragged2e}
+\sloppy
+\setlength{\emergencystretch}{3em}
+\setlist[itemize]{leftmargin=*,itemsep=2pt,topsep=3pt}
+\setlist[enumerate]{leftmargin=*,itemsep=2pt,topsep=3pt}
+\renewcommand{\figurename}{Hình}
+\renewcommand{\tablename}{Bảng}
+\renewcommand{\refname}{Tài liệu tham khảo}
+\newcommand{\noteedit}[1]{\textbf{[BỔ SUNG: #1]}}
+\newcommand{\given}{\mathcal{G}}
+\newcommand{\CNF}{\mathcal{F}}
+
+% Code và lệnh trên terminal, dễ copy từ file PDF
+\lstdefinestyle{bashstyle}{
+  basicstyle=\ttfamily\footnotesize,
+  frame=single,
+  framerule=0.35pt,
+  breaklines=true,
+  breakatwhitespace=true,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  backgroundcolor=\color{gray!4},
+  xleftmargin=1mm,
+  xrightmargin=1mm,
+  aboveskip=6pt,
+  belowskip=6pt
+}
+\lstset{style=bashstyle}
+
+\begin{document}
+% Điều chỉnh chân trang cho báo cáo môn học (vẫn giữ nguyên lớp cas-sc).
+\newcommand{\reportfooter}{\small\sffamily Báo cáo Bài tập lớn số 1 -- Sudoku Solver}
+\ExplSyntaxOn
+\cs_set_eq:NN \__first_footerline: \reportfooter
+\ExplSyntaxOff
+\RenewDocumentCommand{\printorcid}{}{} % không hiển thị mục ORCID trống của mẫu journal
+% ===== Thông tin đầu báo cáo: chỉnh sửa trực tiếp =====
+\shorttitle{Báo cáo bài tập lớn: Sudoku Solver}
+\shortauthors{Sinh viên thực hiện}
+\title[mode=title]{GIẢI SUDOKU BẰNG SAT VÀ CÁC PHƯƠNG PHÁP GIẢI CHÍNH XÁC}
+\tnotemark[1]
+\tnotetext[1]{Báo cáo Bài tập lớn số 1 -- Môn Các vấn đề hiện đại Khoa học máy tính; học kỳ I, năm học 2026--2027.}
+\author[1]{Họ và tên sinh viên (bổ sung)}
+\address[1]{Lớp: [BỔ SUNG] \quad -- \quad Mã sinh viên: [BỔ SUNG] \\ Giảng viên hướng dẫn: [BỔ SUNG]}
+
+\begin{abstract}
+Báo cáo mô tả quá trình xây dựng chương trình giải Sudoku bằng kỹ thuật thỏa mãn logic (SAT) và các phương pháp giải chính xác. Các chế độ SAT thông thường, MaxSAT, Multiple SAT và Incremental SAT được triển khai với PySAT; chương trình hỗ trợ CaDiCaL và Glucose4, đồng thời sử dụng OR-Tools CP-SAT làm phương pháp đối chiếu chính. Những mô hình dựa trên Gurobi MIP, CPLEX MIP và CPLEX CP được chuẩn bị dưới dạng lựa chọn mở rộng khi có môi trường thực thi phù hợp.
+
+Bài tập sử dụng các Sudoku kích thước $9\times9$, $16\times16$ và $25\times25$. Bộ thực nghiệm mặc định gồm 12 instance lấy mẫu từ Kaggle cùng 20 instance được tự sinh từ bảng Sudoku hợp lệ, tương ứng 32 instance và bảy cấu hình giải. Chương trình thiết kế cơ chế ghi trạng thái, thời gian xử lý, số biến, số mệnh đề hoặc số ràng buộc và thông tin kiểm tra nghiệm. Báo cáo tập trung vào mô hình, cách cài đặt và kế hoạch thực nghiệm; số liệu benchmark và phần so sánh hiệu năng được để lại để bổ sung sau khi hoàn thành các lượt chạy chính thức.
+\end{abstract}
+
+\begin{keywords}
+Sudoku \sep SAT encoding \sep CNF \sep MaxSAT \sep Multiple SAT \sep Incremental SAT \sep CP-SAT
+\end{keywords}
+
+\maketitle
+
+\section{Giới thiệu}\label{sec:introduction}
+\subsection{Bối cảnh và yêu cầu bài tập}
+Sudoku là bài toán tìm cách điền giá trị vào một lưới ô vuông sao cho các ràng buộc trên hàng, cột và khối con đều được thỏa mãn. Bên cạnh những cách giải quay lui hoặc suy luận thông thường, Sudoku có thể mô hình hóa thành bài toán thỏa mãn mệnh đề (SAT), bài toán lập trình nguyên (MIP/ILP) hoặc lập trình ràng buộc (CP). Vì vậy, Sudoku phù hợp để thực hành quá trình chuyển đổi bài toán tổ hợp sang các mô hình giải chính xác, triển khai phần mềm và tổ chức thí nghiệm có thể tái lập.
+
+Theo yêu cầu Bài tập lớn số 1 của học phần \cite{assignment}, người thực hiện cần xây dựng solver cho một bài toán logic, thực hiện SAT encoding, thử nghiệm trên ma trận kích thước lớn và đối chiếu với các hướng giải chính xác như CP, ILP. Tài liệu yêu cầu khuyến khích khảo sát những kỹ thuật mã hóa ràng buộc At-Least-One (ALO) và At-Most-One (AMO), cũng như chuẩn bị kết quả thực nghiệm và mã nguồn có thể kiểm chứng.
+
+Trong phạm vi triển khai hiện tại, hai phương án AMO được chọn là \emph{Pairwise} và \emph{Sequential Counter}. Về bộ giải, CaDiCaL và Glucose4 được chọn cho SAT; RC2 dùng cho MaxSAT; OR-Tools CP-SAT giữ vai trò phương pháp đối chứng mặc định. Gurobi MIP, CPLEX MIP và CPLEX CP là các cấu hình bổ sung, không bắt buộc để thực hiện bộ benchmark cơ sở.
+
+\subsection{Mục tiêu và phạm vi triển khai}
+Các mục tiêu chính của bài tập gồm:
+\begin{itemize}
+ \item Xây dựng mô hình Sudoku thống nhất cho ba kích thước $9\times9$, $16\times16$ và $25\times25$.
+ \item Cài đặt SAT thông thường, MaxSAT, Multiple SAT và Incremental SAT; cho phép thay đổi SAT solver và cách mã hóa AMO.
+ \item Cài đặt CP-SAT và chuẩn bị khả năng chạy thêm các solver MIP/CP để đối chiếu.
+ \item Tạo bộ instance cố định bằng hạt giống ngẫu nhiên (seed) và xuất kết quả theo từng cặp instance--cấu hình.
+ \item Xác minh nghiệm bằng một hàm kiểm tra Sudoku độc lập với các solver.
+\end{itemize}
+
+Báo cáo này là \textbf{báo cáo phương pháp và thiết kế thực nghiệm của bài tập lớn}, không nhằm trình bày một phương pháp giải mới hoặc khẳng định ưu thế hiệu năng khi chưa có dữ liệu chạy thực tế. Bố cục tham khảo cách tách phần mô hình, phương pháp và thực nghiệm của tài liệu mẫu do môn học cung cấp \cite{reportexample}, nhưng nội dung và cách diễn đạt được điều chỉnh cho phù hợp với quá trình cài đặt chương trình Sudoku.
+
+\section{Mô hình bài toán Sudoku}\label{sec:model}
+\subsection{Định nghĩa bài toán}
+Xét bảng Sudoku $n\times n$ với $n\in\{9,16,25\}$ và $b=\sqrt n$. Bảng gồm $n^2$ ô, được chia thành các khối $b\times b$. Mỗi ô nhận đúng một số trong $\{1,2,\ldots,n\}$; mỗi hàng, cột và khối phải chứa mỗi số đúng một lần. Những giá trị được điền sẵn (\emph{clues}, hay \emph{givens}) cần giữ nguyên khi giải Sudoku theo nghĩa thông thường.
+
+Đầu vào được lưu trong một mảng có $n^2$ phần tử, theo thứ tự hàng trước, cột sau. Giá trị $0$ biểu diễn ô chưa điền. Bài toán quyết định yêu cầu xác định có tồn tại lời giải đáp ứng toàn bộ quy tắc và các clue đã cho hay không. Nếu tồn tại, bộ giải trả về trạng thái \texttt{SAT}; ngược lại trả về \texttt{UNSAT}.
+
+\subsection{Biến Boolean}
+Dùng biến $x_{r,c,v}$ với $0\le r,c<n$ và $1\le v\le n$:
+\begin{equation}
+ x_{r,c,v}=\begin{cases}
+   1,&\text{khi ô }(r,c)\text{ nhận giá trị }v,\\
+   0,&\text{trong trường hợp còn lại.}
+ \end{cases}
+ \label{eq:variable}
+\end{equation}
+Số biến Boolean cơ sở bằng $n^3$, tương ứng 729, 4096 và 15625 biến cho ba kích thước $n=9$, $n=16$ và $n=25$. Những biến phụ do Sequential Counter tạo ra chưa được tính trong các con số này.
+
+\subsection{Bốn nhóm ràng buộc Exactly-One}
+Tất cả các quy tắc Sudoku được mô tả bằng bốn nhóm điều kiện \emph{Exactly-One}, viết tắt là EO:
+\begin{align}
+ \sum_{v=1}^{n}x_{r,c,v}&=1 &&\forall r,c, \label{eq:cell}\\
+ \sum_{c=0}^{n-1}x_{r,c,v}&=1 &&\forall r,v, \label{eq:row}\\
+ \sum_{r=0}^{n-1}x_{r,c,v}&=1 &&\forall c,v, \label{eq:column}\\
+ \sum_{(r,c)\in B}x_{r,c,v}&=1 &&\forall B,v. \label{eq:block}
+\end{align}
+Trong đó $B$ là một khối con $b\times b$. Công thức \eqref{eq:cell} bảo đảm mỗi ô có một giá trị; \eqref{eq:row} và \eqref{eq:column} bảo đảm một giá trị không lặp trên hàng, cột; \eqref{eq:block} áp dụng quy tắc tương tự cho khối con.
+
+Có tổng cộng $4n^2$ nhóm EO, mỗi nhóm gồm $n$ biến. Một clue $g$ tại ô $(r,c)$ được bổ sung thành mệnh đề đơn $(x_{r,c,g})$. Việc tách riêng phần quy tắc chung và các clue giúp tái sử dụng CNF cơ sở trong Incremental SAT.
+
+\section{Phương pháp mã hóa và giải}\label{sec:methods}
+\subsection{Chuyển đổi Exactly-One sang CNF}
+Với một nhóm biến $X=\{x_1,\ldots,x_n\}$, điều kiện EO được chia thành một ràng buộc At-Least-One (ALO) và một ràng buộc At-Most-One (AMO):
+\begin{align}
+ \operatorname{ALO}(X)&=(x_1\lor x_2\lor\cdots\lor x_n),\label{eq:alo}\\
+ \operatorname{AMO}(X)&:\sum_{i=1}^{n}x_i\le1.\label{eq:amo}
+\end{align}
+ALO chỉ cần một mệnh đề có $n$ literal. Phần AMO được triển khai theo hai cách sau.
+
+\paragraph{Pairwise.}
+Với mọi cặp $i<j$, đưa vào mệnh đề $(\neg x_i\lor\neg x_j)$. Một nhóm AMO có $n(n-1)/2$ mệnh đề, không cần biến phụ. Phương pháp đơn giản nhưng số mệnh đề tăng theo bậc hai của số biến trong một nhóm.
+
+\paragraph{Sequential Counter.}
+Phương pháp này bổ sung biến phụ và chuyển điều kiện AMO thành hệ mệnh đề có kích thước tăng tuyến tính theo số biến đầu vào. Chương trình sử dụng giao diện \texttt{CardEnc.atmost(..., EncType.seqcounter)} của PySAT \cite{pysat}; phương pháp Sequential Counter được mô tả trong \cite{sinz2005}. Đối với mỗi nhóm, chương trình cấp phát ID biến phụ mới, bảo đảm không trùng với $n^3$ biến Sudoku cơ sở.
+
+Bảng~\ref{tab:encoding} tóm tắt hai lựa chọn. Số biến và mệnh đề thực tế trong \texttt{results.csv} được lấy sau khi tạo CNF, không phải các cấu trúc nội bộ mà SAT solver tự tạo ra khi chạy.
+\begin{table}[htbp]
+\centering
+\caption{Hai cách mã hóa điều kiện AMO được sử dụng}
+\label{tab:encoding}
+\begin{tabularx}{\linewidth}{@{}lXX@{}}
+\toprule
+Đặc điểm & Pairwise & Sequential Counter\\
+\midrule
+Mệnh đề AMO/nhóm & $n(n-1)/2$ & Tăng tuyến tính theo $n$\\
+Biến phụ & Không & Có\\
+Cài đặt & Sinh từng cặp literal & PySAT \texttt{CardEnc}\\
+Mục đích & Cấu hình so sánh encoding & Encoding mặc định\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{SAT thông thường}
+SAT thông thường thêm tất cả clue của một instance dưới dạng mệnh đề đơn vào CNF và gọi SAT solver để tìm một phép gán thỏa mãn. Chương trình sử dụng hai backend CaDiCaL (tên PySAT: \texttt{cadical153}) và Glucose4 (\texttt{glucose4}).
+
+Để khảo sát riêng tác động của solver và encoding, ba cấu hình SAT được lựa chọn: CaDiCaL--Sequential Counter, Glucose4--Sequential Counter và CaDiCaL--Pairwise. Khi trả về SAT, chương trình đọc các biến cơ sở mang giá trị đúng, giải mã chúng thành bảng $n\times n$ và kiểm tra độc lập điều kiện hàng, cột, khối cùng các clue đầu vào.
+
+\subsection{MaxSAT: tối thiểu hóa số clue cần điều chỉnh}
+Khác với SAT thông thường, MaxSAT cho phép một phần yêu cầu không được thỏa mãn nhằm tối ưu một hàm mục tiêu. Trong cài đặt này, các ràng buộc cấu trúc Sudoku được giữ là \emph{hard clauses}, trong khi mỗi clue đầu vào là một \emph{soft unit clause} có trọng số 1. RC2 của PySAT được sử dụng để giải Weighted Partial MaxSAT.
+
+Với tập clue $\given$, mục tiêu là
+\begin{equation}
+ \min \sum_{(r,c,g)\in\given}\bigl(1-x_{r,c,g}\bigr),
+ \qquad\text{với toàn bộ ràng buộc Sudoku là hard.}
+ \label{eq:maxsat}
+\end{equation}
+Giá trị tối ưu \texttt{maxsat\_cost} là số clue ít nhất cần thay đổi để có một bảng Sudoku hợp lệ. Trong chương trình, trường \texttt{status} là \texttt{SAT} khi cost bằng 0 và \texttt{UNSAT} khi cost lớn hơn 0, \emph{theo tính khả thi của toàn bộ clue gốc}. Điều này không có nghĩa RC2 không tìm được nghiệm: trường hợp cost dương vẫn có thể trả về một Sudoku hợp lệ sau khi nới lỏng clue. Do đó, cần đọc cùng lúc \texttt{status}, \texttt{maxsat\_cost} và lời giải trả về.
+
+\subsection{Multiple SAT: phát hiện nghiệm thứ hai}
+Multiple SAT được dùng để kiểm tra tính duy nhất của nghiệm bằng tối đa hai lần giải. Lần đầu giải CNF của Sudoku như SAT thông thường. Nếu tìm được nghiệm $s(r,c)$, chương trình thêm mệnh đề chặn:
+\begin{equation}
+ \bigvee_{r=0}^{n-1}\ \bigvee_{c=0}^{n-1}
+ \neg x_{r,c,s(r,c)}.
+ \label{eq:blocking}
+\end{equation}
+Mệnh đề này loại bỏ toàn bộ bảng nghiệm đã tìm được mà không loại bỏ các nghiệm khác chỉ vì khác biệt ở biến phụ. Sau đó solver được gọi lần thứ hai. Nếu lần giải thứ hai là SAT, bài toán có ít nhất hai nghiệm; nếu UNSAT, nghiệm đầu tiên là duy nhất. Việc tìm kiếm dừng sau tối đa hai nghiệm, không thực hiện đếm toàn bộ nghiệm.
+
+Thời gian của cấu hình Multiple SAT có thể bao gồm hai lời gọi solver; vì vậy đây không phải phép đo thuần túy thời gian tìm một nghiệm như SAT cơ sở.
+
+\subsection{Incremental SAT: tái sử dụng solver giữa các instance}
+Đối với những instance có cùng $n$ và cùng phương pháp encoding, các mệnh đề quy tắc Sudoku không đổi. Chương trình tạo CNF cơ sở một lần, nạp vào một đối tượng CaDiCaL và dùng \texttt{solve(assumptions=...)} để biểu diễn các clue khác nhau. Sau mỗi lần giải, đối tượng solver được giữ lại, trong khi assumptions của instance trước không bị biến thành các mệnh đề cố định.
+
+Incremental SAT ở đây là \textbf{tái sử dụng bộ giải giữa nhiều instance cùng kích thước}, không phải quy trình thêm dần clue vào một instance. Thời gian dựng CNF và khởi tạo solver dùng chung được ghi bằng \texttt{setup\_s}; thời gian xử lý từng instance được ghi ở \texttt{runtime\_s}. Khi phân tích, phải phân biệt chi phí chung với thời gian giải riêng lẻ, không cộng nhiều lần cùng một giá trị setup được lặp lại trong các bản ghi.
+
+\subsection{CP-SAT, Gurobi MIP và CPLEX làm phương pháp đối chiếu}
+Mô hình CP-SAT của OR-Tools \cite{ortools} tạo một biến nguyên $z_{r,c}\in\{1,\ldots,n\}$ cho mỗi ô, sau đó áp dụng \texttt{AllDifferent} cho từng hàng, cột và khối. Clue $g$ tại $(r,c)$ được cố định bằng $z_{r,c}=g$. Mô hình gốc gồm $n^2$ biến nguyên và $3n+|\given|$ ràng buộc đầu vào. CP-SAT mặc định được đặt một luồng trong benchmark để hạn chế sai lệch do số lượng luồng giải.
+
+Các mô hình Gurobi MIP và CPLEX MIP sử dụng $n^3$ biến nhị phân cùng bốn nhóm ràng buộc tổng bằng 1 tương tự \eqref{eq:cell}--\eqref{eq:block}. CPLEX CP dùng các biến nguyên và ràng buộc khác nhau trong mỗi hàng, cột, khối. Các backend này được triển khai ở mức mã nguồn nhưng cần cài đặt engine và license tương ứng để chạy thực tế. Không gộp các ràng buộc CP/MIP với số mệnh đề CNF vì chúng thuộc các dạng biểu diễn khác nhau.
+
+\section{Thiết kế thực nghiệm}\label{sec:experiment}
+\subsection{Nguồn dữ liệu và cách tạo instance}
+Các Sudoku $9\times9$ được lấy mẫu từ bộ \emph{Sudoku} trên Kaggle \cite{kaggle_sudoku}. Chương trình đọc trực tiếp tệp \texttt{sudoku.csv} nằm trong ZIP, chọn mẫu với seed cố định và sử dụng lời giải tham chiếu để kiểm tra tính hợp lệ của dữ liệu.
+
+Đối với kích thước lớn, chương trình tạo một bảng Sudoku hợp lệ từ cấu trúc có quy luật, hoán vị hàng trong dải, dải hàng, cột trong dải, dải cột và các nhãn giá trị; sau đó bỏ ngẫu nhiên một phần ô để tạo đề bài. Tham số \texttt{keep16=0.60} giữ khoảng 60\% ô đã cho của bảng 16$\times$16; \texttt{keep25=0.72} giữ khoảng 72\% của bảng 25$\times$25. Do mỗi đề được tạo từ một bảng nghiệm đã biết, chúng \emph{được bảo đảm có ít nhất một nghiệm}, nhưng chưa bảo đảm nghiệm duy nhất hoặc một mức độ khó nhất định.
+
+\begin{table}[htbp]
+\centering
+\caption{Bộ dữ liệu mặc định dùng cho thực nghiệm}
+\label{tab:dataset}
+\begin{tabularx}{\linewidth}{@{}lclX@{}}
+\toprule
+Kích thước & Số lượng & Nguồn & Đặc điểm\\
+\midrule
+$9\times9$ & 12 & Kaggle & Có nghiệm tham chiếu\\
+$16\times16$ & 10 & Tự sinh & Có nghiệm; giữ khoảng 60\% clue\\
+$25\times25$ & 10 & Tự sinh & Có nghiệm; giữ khoảng 72\% clue\\
+\midrule
+Tổng & 32 & Seed 42 & Chưa tính instance UNSAT tùy chọn\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Để kiểm tra trạng thái UNSAT, chương trình cũng có tùy chọn tạo một instance mâu thuẫn có kiểm soát trên mỗi kích thước, bằng cách đặt hai clue trùng giá trị trên cùng hàng. Các instance này không nằm trong 32 instance mặc định.
+
+\subsection{Các cấu hình được lựa chọn}
+Bảng~\ref{tab:configs} nêu bảy cấu hình của profile \texttt{standard}. Đây là tập cấu hình được chọn để khảo sát ảnh hưởng của solver SAT, encoding, mục tiêu giải và phương pháp CP đối chứng, đồng thời giữ số lượt chạy phù hợp với phạm vi bài tập.
+
+\begin{table}[htbp]
+\centering
+\caption{Các cấu hình giải được chọn cho profile mặc định}
+\label{tab:configs}
+\small
+\begin{tabularx}{\linewidth}{@{}lXl@{}}
+\toprule
+Mã cấu hình & Phương pháp / backend & Đặc điểm\\
+\midrule
+\texttt{sat-cadical-seq} & SAT / CaDiCaL & Sequential\\
+\texttt{sat-glucose-seq} & SAT / Glucose4 & Sequential\\
+\texttt{sat-cadical-pair} & SAT / CaDiCaL & Pairwise\\
+\texttt{maxsat} & MaxSAT / RC2 + CaDiCaL & Soft clues\\
+\texttt{multiple} & Multiple SAT / CaDiCaL & Tối đa 2 nghiệm\\
+\texttt{incremental} & Incremental SAT / CaDiCaL & Assumptions\\
+\texttt{cpsat} & CP-SAT / OR-Tools & AllDifferent\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Nếu chạy đủ 32 instance với cả bảy cấu hình, số bản ghi kỳ vọng là $32\times7=224$. Gurobi MIP, CPLEX MIP, CPLEX CP có thể được bổ sung sau khi xác nhận môi trường và giấy phép. Các lượt thử riêng từng kích thước nên được lưu trong thư mục riêng để tránh ghi đè kết quả.
+
+\subsection{Môi trường và quy ước đo thời gian}
+Các thông tin phần cứng và phần mềm sẽ được điền từ máy thực hiện benchmark chính thức:
+\begin{itemize}
+ \item CPU: \noteedit{tên CPU và số nhân}; RAM: \noteedit{dung lượng}.
+ \item Hệ điều hành: \noteedit{phiên bản}; Python: \noteedit{phiên bản}.
+ \item PySAT: \noteedit{phiên bản}; OR-Tools: \noteedit{phiên bản}.
+ \item Giới hạn thời gian mỗi instance: \noteedit{số giây}; số lần lặp: \noteedit{số lần}.
+\end{itemize}
+
+Chương trình ghi hai loại thời gian. \texttt{setup\_s} là chi phí tạo CNF cơ sở, và với Incremental SAT còn bao gồm khởi tạo đối tượng solver dùng chung. \texttt{runtime\_s} là thời gian xử lý một instance: bao gồm tạo solver mới đối với SAT thông thường, Multiple SAT và MaxSAT; bao gồm dựng mô hình và gọi solver đối với CP-SAT/MIP/CP. Thời gian chờ tối đa của một lượt chạy được cung cấp qua \texttt{--timeout}. Mốc timeout cần được giữ thống nhất trong thí nghiệm đối chiếu chính thức.
+
+Lưu ý rằng \texttt{runtime\_s} của Incremental SAT không tự bao gồm toàn bộ \texttt{setup\_s} vì chi phí đó được chia sẻ cho nhiều instance. Nếu cần so sánh tổng chi phí của một nhóm, phải cộng một lần chi phí chuẩn bị và tổng thời gian giải, đồng thời xem xét chi phí khởi tạo lại sau timeout.
+
+\subsection{Các chỉ số thu thập}\label{sec:metrics}
+Mỗi dòng trong \texttt{results.csv} tương ứng một cặp instance--cấu hình. Bảng~\ref{tab:metrics} giải thích những trường quan trọng được lưu để phục vụ phân tích.
+\begin{table}[htbp]
+\centering
+\caption{Các chỉ số ghi trong tệp kết quả}
+\label{tab:metrics}
+\small
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+Trường dữ liệu & Ý nghĩa\\
+\midrule
+\texttt{status} & SAT, UNSAT, TIMEOUT hoặc ERROR.\\
+\texttt{runtime\_s} & Thời gian xử lý instance (giây).\\
+\texttt{setup\_s} & Thời gian chuẩn bị chung của cùng nhóm.\\
+\texttt{variables} & Số biến trong mô hình đầu vào.\\
+\texttt{clauses} & Số mệnh đề CNF đầu vào; không dùng cho CP/MIP.\\
+\texttt{constraints} & Số ràng buộc của mô hình CP/MIP.\\
+\texttt{solutions\_found} & Số nghiệm tìm được (tối đa 2 ở Multiple SAT).\\
+\texttt{unique} & Cờ nghiệm duy nhất theo lần giải thứ hai.\\
+\texttt{maxsat\_cost} & Số clue tối ưu cần thay đổi ở MaxSAT.\\
+\texttt{valid\_solution} & Kết quả xác thực nghiệm được giải mã.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Các trường \texttt{variables} và \texttt{clauses} chỉ mô tả biểu diễn CNF đưa vào bộ giải. Với Sequential Counter, chúng bao gồm các biến phụ và mệnh đề phụ phát sinh từ encoding. Với MaxSAT, kích thước mô hình được ghi trước các cấu trúc nới lỏng nội bộ của RC2. Đối với CP-SAT hoặc MIP, trường \texttt{clauses} để trống; số ràng buộc được ghi tại \texttt{constraints}. Không xem số lượng mệnh đề CNF và số lượng ràng buộc CP/MIP là các đại lượng tương đương.
+
+Tệp \texttt{summary.csv} nhóm các kết quả theo kích thước, phương pháp, solver và encoding; thống kê số SAT, UNSAT, TIMEOUT, ERROR và các đặc trưng thời gian. Các lượt timeout không được gộp vào số UNSAT, và số liệu thời gian của các lượt hoàn thành cần được trình bày cùng tỷ lệ timeout để tránh sai lệch diễn giải.
+
+\subsection{Quy trình thực nghiệm}
+Quy trình thực hiện gồm các bước:
+\begin{enumerate}
+ \item Chuẩn bị \texttt{instances.jsonl} từ ZIP Kaggle và dữ liệu tự sinh, hoặc dùng bộ \texttt{sample\_data} có sẵn.
+ \item Kiểm tra dữ liệu đầu vào; chạy từng cấu hình với cùng dataset, giới hạn thời gian và máy thực nghiệm.
+ \item Giải mã nghiệm, xác thực quy tắc Sudoku và kiểm tra clue gốc (trừ chế độ MaxSAT cho phép thay đổi clue).
+ \item Xuất \texttt{results.csv}, \texttt{summary.csv}, \texttt{solutions.jsonl} rồi tổng hợp kết quả cho báo cáo.
+\end{enumerate}
+
+\subsection{Kết quả so sánh thực nghiệm (bổ sung sau)}\label{sec:pending}
+\textit{Mục này được chủ động để trống theo phạm vi bản nháp. Sau khi chạy benchmark, bổ sung các bảng SAT/UNSAT/TIMEOUT, runtime, variables và clauses theo kích thước; nếu so sánh với CP-SAT/Gurobi/CPLEX, sử dụng thêm trường constraints và chú thích rõ sự khác nhau của mô hình. Không chèn số liệu chưa được đo.}
+
+\section{Kiểm tra tính đúng đắn và giới hạn}\label{sec:validation}
+\subsection{Kiểm tra đầu vào và lời giải}
+Chương trình kiểm tra kích thước mảng đầu vào là $n^2$, $n$ là số chính phương và mọi giá trị thuộc $\{0,1,\ldots,n\}$. Với một nghiệm đầy đủ, hàm xác thực kiểm tra mỗi hàng, cột và khối có đúng tập giá trị $\{1,\ldots,n\}$. Các phương pháp SAT thường, Multiple SAT, Incremental SAT và CP-SAT còn phải giữ nguyên clue. Riêng với MaxSAT, số clue khác biệt giữa nghiệm và đề bài phải bằng chi phí tối ưu \texttt{maxsat\_cost} do RC2 trả về.
+
+Project có các tệp kiểm thử trong thư mục \texttt{tests}. Trước khi đưa số liệu vào báo cáo cuối, cần cài đặt đầy đủ các thư viện và chạy các kiểm thử tích hợp trên máy thực nghiệm; phần kiểm thử thuần Python đã được kiểm tra trong giai đoạn chuẩn bị mã nguồn. Không suy diễn rằng tất cả solver đã được xác minh nếu chưa chạy chúng trên môi trường cuối cùng.
+
+\subsection{Các giới hạn khi diễn giải số liệu}
+\begin{itemize}
+ \item Các Sudoku $16\times16$ và $25\times25$ được tạo từ bảng nghiệm hợp lệ, nhưng chưa được kiểm chứng là nghiệm duy nhất hoặc có độ khó tương đương bộ Kaggle.
+ \item SAT, MaxSAT và Multiple SAT giải các nhiệm vụ khác nhau: tìm một nghiệm, tối thiểu hóa clue vi phạm và tìm tối đa hai nghiệm. Không kết luận phương pháp nào nhanh hơn chỉ từ thời gian tổng khi mục tiêu không đồng nhất.
+ \item Incremental SAT tái sử dụng solver giữa các instance. Cần tính riêng chi phí chuẩn bị và lưu ý thứ tự instance có thể ảnh hưởng đến trạng thái solver được tái sử dụng.
+ \item Số \texttt{clauses} của CNF không thể đối chiếu trực tiếp theo tỷ lệ 1:1 với \texttt{constraints} của CP-SAT, CP hoặc MIP.
+ \item Để kết quả runtime đáng tin cậy hơn, nên cố định môi trường, cân nhắc chạy lặp và trình bày thêm trung vị hoặc độ phân tán.
+\end{itemize}
+
+\section{Kết luận và hướng hoàn thiện}\label{sec:conclusion}
+Trong phạm vi Bài tập lớn số 1, bộ mã nguồn đã được thiết kế để biểu diễn và giải Sudoku bằng nhiều kỹ thuật SAT, cho phép lựa chọn backend, thay đổi cách encoding, tạo instance theo kích thước và xuất các chỉ số thực nghiệm thống nhất. Cấu hình Pairwise và Sequential Counter phục vụ khảo sát ảnh hưởng của mã hóa AMO; MaxSAT, Multiple SAT và Incremental SAT thể hiện những cách khai thác SAT khác nhau. CP-SAT và các mô hình MIP/CP được đưa vào để chuẩn bị cho phần đối chiếu với phương pháp giải chính xác khác.
+
+Bản báo cáo hiện tập trung vào phương pháp và tổ chức thực nghiệm; chưa có số liệu đo đủ điều kiện để so sánh hiệu năng. Sau khi chạy thử nghiệm chính thức, cần bổ sung bảng kết quả, kiểm tra các trường hợp thất bại/timeout, xác nhận nghiệm và cập nhật kết luận theo dữ liệu thực tế. Những việc có thể thực hiện tiếp gồm bổ sung instance UNSAT có kiểm soát, đánh giá tính duy nhất của Sudoku lớn, thử thêm encoding AMO nếu thời gian cho phép và công bố mã nguồn cùng hướng dẫn tái lập.
+
+\section*{Khả năng truy cập mã nguồn và dữ liệu}
+Mã nguồn, các lệnh chạy và tệp đầu ra được tổ chức trong project Sudoku Assignment 1. Địa chỉ repository công khai: \noteedit{liên kết GitHub sau khi tải mã nguồn lên}. Nguồn Sudoku $9\times9$ tham khảo từ Kaggle \cite{kaggle_sudoku}; những instance lớn được tạo bởi script trong project với seed cố định.
+
+\begin{thebibliography}{9}
+\bibitem{assignment}
+Ban tổ chức học phần (2026), \textit{Yêu cầu Bài tập lớn số 1 -- Môn Các vấn đề hiện đại Khoa học máy tính}, học kỳ I, năm học 2026--2027.
+
+\bibitem{reportexample}
+Pham Quang Minh, Dao Xuan Nghia và To Van Khanh (2026), \textit{Exact SAT Solving for the Two-Dimensional Bandwidth Minimization Problem}, tài liệu mẫu do học phần cung cấp.
+
+\bibitem{kaggle_sudoku}
+Bryan Park, \textit{Sudoku Dataset}, Kaggle, \url{https://www.kaggle.com/datasets/bryanpark/sudoku}.
+
+\bibitem{pysat}
+PySAT Developers, \textit{PySAT: Python Satisfiability Toolkit}, \url{https://pysathq.github.io/}.
+
+\bibitem{sinz2005}
+Carsten Sinz (2005), ``Towards an Optimal CNF Encoding of Boolean Cardinality Constraints'', \textit{Principles and Practice of Constraint Programming -- CP 2005}, tr. 827--831, DOI: \url{https://doi.org/10.1007/11564751_73}.
+
+\bibitem{ortools}
+Google OR-Tools, \textit{CP-SAT Solver Documentation}, \url{https://developers.google.com/optimization/cp/cp_solver}.
+\end{thebibliography}
+
+\appendix
+\section{Lệnh tái lập thực nghiệm}\label{app:commands}
+Tại thư mục chứa \texttt{main.py}, cài đặt thư viện và chuẩn bị dữ liệu:
+\begin{lstlisting}
+python -m pip install -r requirements.txt
+python main.py prepare --archive "archive (1).zip" --out data --seed 42
+\end{lstlisting}
+Chạy lần lượt từng cấu hình trên tập \texttt{sample\_data} có sẵn (có thể thay bằng \texttt{data} sau khi tạo lại):
+\begin{lstlisting}
+python main.py benchmark --data sample_data --config sat-cadical-seq --out results/sat-cadical-seq --timeout 30
+python main.py benchmark --data sample_data --config sat-glucose-seq --out results/sat-glucose-seq --timeout 30
+python main.py benchmark --data sample_data --config sat-cadical-pair --out results/sat-cadical-pair --timeout 30
+python main.py benchmark --data sample_data --config maxsat --out results/maxsat --timeout 30
+python main.py benchmark --data sample_data --config multiple --out results/multiple --timeout 30
+python main.py benchmark --data sample_data --config incremental --out results/incremental --timeout 30
+python main.py benchmark --data sample_data --config cpsat --out results/cpsat --timeout 30
+\end{lstlisting}
+Chạy toàn bộ profile mặc định và kiểm thử:
+\begin{lstlisting}
+python main.py benchmark --data sample_data --profile standard --out results/all --timeout 30
+python -m unittest discover -s tests -v
+\end{lstlisting}
+Có thể giới hạn kích thước bằng \texttt{--size 9}, \texttt{--size 16} hoặc \texttt{--size 25}. Các cấu hình \texttt{gurobi}, \texttt{cplex-mip} và \texttt{cplex-cp} cần môi trường tương ứng. Nên dùng thư mục kết quả khác nhau nếu thay đổi thời gian chạy hoặc danh sách instance.
+
+\section{Hướng dẫn hoàn thiện báo cáo}\label{app:todo}
+Trước khi nộp, cần cập nhật thông tin sinh viên, cấu hình máy và phiên bản công cụ ở mục~\ref{sec:experiment}; chèn dữ liệu đo thật vào mục~\ref{sec:pending}; rà soát kết quả \texttt{valid\_solution}; bổ sung liên kết GitHub; đối chiếu các bảng và công thức với phiên bản mã nguồn cuối cùng. Không đưa các số liệu minh họa vào kết quả chính thức nếu chúng không được tạo từ benchmark trên môi trường đã mô tả.
+
+\end{document}

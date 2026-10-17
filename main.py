@@ -16,6 +16,19 @@ from pathlib import Path
 FIELDS = ["instance", "size", "givens", "method", "solver", "encoding", "status",
           "runtime_s", "setup_s", "variables", "clauses", "constraints", "var_type",
           "solutions_found", "unique", "maxsat_cost", "valid_solution", "assumptions", "soft_clauses", "error"]
+SAT_METHODS = {"sat", "maxsat", "multiple", "incremental"}
+
+
+def regions(n):
+    """Row, column and box coordinates shared by every solver."""
+    b = math.isqrt(n)
+    for r in range(n):
+        yield [(r, c) for c in range(n)]
+    for c in range(n):
+        yield [(r, c) for r in range(n)]
+    for br in range(0, n, b):
+        for bc in range(0, n, b):
+            yield [(r, c) for r in range(br, br+b) for c in range(bc, bc+b)]
 
 
 def valid(grid, check_clues=None):
@@ -27,13 +40,7 @@ def valid(grid, check_clues=None):
     target = set(range(1, n + 1))
     if check_clues and any(v and v != grid[i] for i, v in enumerate(check_clues)):
         return False
-    for r in range(n):
-        if set(grid[r*n:(r+1)*n]) != target:
-            return False
-        if {grid[c*n+r] for c in range(n)} != target:
-            return False
-    return all({grid[(br+i)*n+bc+j] for i in range(b) for j in range(b)} == target
-               for br in range(0, n, b) for bc in range(0, n, b))
+    return all({grid[r*n+c] for r, c in cells} == target for cells in regions(n))
 
 
 def generate(n, rng, keep):
@@ -58,6 +65,7 @@ def generate(n, rng, keep):
 
 
 def read_kaggle(archive, sample_size, pool, seed):
+    """Reservoir sampling from at most `pool` CSV records; no 164 MB extraction."""
     rng, selected = random.Random(seed), []
     with zipfile.ZipFile(archive) as zf:
         with zf.open("sudoku.csv") as raw:
@@ -65,20 +73,21 @@ def read_kaggle(archive, sample_size, pool, seed):
             for j, row in enumerate(reader):
                 if j >= pool:
                     break
-                quiz, sol = row["quizzes"], row["solutions"]
-                puzzle = [int(x) for x in quiz]
-                solution = [int(x) for x in sol]
-                data = (puzzle, solution)
                 if len(selected) < sample_size:
-                    selected.append(data)
+                    k = len(selected)
                 else:
                     k = rng.randint(0, j)
-                    if k < sample_size:
-                        selected[k] = data
+                    if k >= sample_size:
+                        continue
+                selected[k:k+1] = [([int(x) for x in row["quizzes"]],
+                                    [int(x) for x in row["solutions"]])]
+    if len(selected) < sample_size:
+        raise ValueError("CSV has fewer valid records than requested")
     return selected
 
 
 def make_unsat(example):
+    """Introduce two incompatible fixed clues in one row."""
     bad = example["puzzle"].copy()
     n = example["size"]
     for r in range(n):
@@ -94,18 +103,19 @@ def prepare(args):
     rng = random.Random(args.seed)
     instances = []
     for i, (p, s) in enumerate(read_kaggle(args.archive, args.n9, args.pool, args.seed)):
-        instances.append({"id": f"s9_{i+1:03d}", "size": 9, "puzzle": p,
+        instances.append({"id": f"s9_{i+1:06d}", "size": 9, "puzzle": p,
                           "reference_solution": s, "source": "kaggle"})
     for n, count, keep in [(16, args.n16, args.keep16), (25, args.n25, args.keep25)]:
+        unsat_indexes = set(rng.sample(range(count), round(count * args.unsat_rate)))
+        batch = []
         for i in range(count):
             p, s = generate(n, rng, keep)
-            instances.append({"id": f"s{n}_{i+1:03d}", "size": n, "puzzle": p,
-                              "reference_solution": s, "source": "generated"})
-    if args.unsat_controls:
-        for n in (9, 16, 25):
-            ex = next((p for p in instances if p["size"] == n), None)
-            if ex:
-                instances.append(make_unsat(ex))
+            item = {"id": f"s{n}_{i+1:06d}", "size": n, "puzzle": p,
+                    "reference_solution": s, "source": "generated"}
+            batch.append(make_unsat(item) if i in unsat_indexes else item)
+        rng.shuffle(batch)
+        instances.extend(batch)
+    rng.shuffle(instances)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     with (out / "instances.jsonl").open("w", encoding="utf-8") as f:
@@ -123,21 +133,12 @@ def clue_literals(puzzle, n):
 
 
 def groups(n):
-    b = math.isqrt(n)
     for r in range(n):
         for c in range(n):
             yield [lit(n, r, c, v) for v in range(1, n+1)]
-    for r in range(n):
+    for cells in regions(n):
         for v in range(1, n+1):
-            yield [lit(n, r, c, v) for c in range(n)]
-    for c in range(n):
-        for v in range(1, n+1):
-            yield [lit(n, r, c, v) for r in range(n)]
-    for br in range(0, n, b):
-        for bc in range(0, n, b):
-            for v in range(1, n+1):
-                yield [lit(n, r, c, v)
-                       for r in range(br, br+b) for c in range(bc, bc+b)]
+            yield [lit(n, r, c, v) for r, c in cells]
 
 
 def build_cnf(n, encoding):
@@ -162,6 +163,14 @@ def decode(model, n):
     positives = set(x for x in model if 0 < x <= n**3)
     return [next((v for v in range(1, n+1) if lit(n, r, c, v) in positives), 0)
             for r in range(n) for c in range(n)]
+
+
+def native_stats(status, variables, constraints, var_type, solution):
+    return {"status": status, "variables": variables, "clauses": "",
+            "constraints": constraints, "var_type": var_type,
+            "solutions_found": int(solution is not None), "unique": "",
+            "maxsat_cost": "", "valid_solution": solution is not None,
+            "assumptions": 0, "soft_clauses": 0}
 
 
 def run_sat(puzzle, n, conf, cnf, reusable=None):
@@ -224,15 +233,101 @@ def run_sat(puzzle, n, conf, cnf, reusable=None):
             "assumptions": assumptions, "soft_clauses": soft_clauses}, solution
 
 
+def run_cpsat(puzzle, n, timeout):
+    from ortools.sat.python import cp_model
+    model = cp_model.CpModel()
+    x = [[model.NewIntVar(1, n, f"x_{r}_{c}") for c in range(n)] for r in range(n)]
+    for cells in regions(n):
+        model.AddAllDifferent([x[r][c] for r, c in cells])
+    for i, v in enumerate(puzzle):
+        if v:
+            model.Add(x[i//n][i % n] == v)
+    solver = cp_model.CpSolver()
+    solver.parameters.num_search_workers = 1
+    solver.parameters.max_time_in_seconds = timeout
+    result = solver.Solve(model)
+    ok = result in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    status = "SAT" if ok else "UNSAT" if result == cp_model.INFEASIBLE else "TIMEOUT"
+    solution = [solver.Value(x[r][c]) for r in range(n) for c in range(n)] if ok else None
+    return native_stats(status, n*n, 3*n+sum(map(bool, puzzle)), "integer", solution), solution
+
+
+def run_gurobi(puzzle, n, timeout):
+    import gurobipy as gp
+    from gurobipy import GRB
+    m = gp.Model()
+    m.Params.OutputFlag = 0
+    m.Params.Threads = 1
+    m.Params.TimeLimit = timeout
+    x = m.addVars(n, n, n, vtype=GRB.BINARY)
+    for r in range(n):
+        for c in range(n):
+            m.addConstr(gp.quicksum(x[r, c, k] for k in range(n)) == 1)
+    for cells in regions(n):
+        for k in range(n):
+            m.addConstr(gp.quicksum(x[r, c, k] for r, c in cells) == 1)
+    for i, v in enumerate(puzzle):
+        if v:
+            m.addConstr(x[i//n, i % n, v-1] == 1)
+    m.optimize()
+    ok = m.SolCount > 0
+    status = "SAT" if ok else "UNSAT" if m.Status == GRB.INFEASIBLE else "TIMEOUT"
+    solution = ([next(k+1 for k in range(n) if x[r, c, k].X > .5)
+                 for r in range(n) for c in range(n)] if ok else None)
+    return native_stats(status, n**3, 4*n*n+sum(map(bool, puzzle)),
+                        "binary MIP", solution), solution
+
+
+def run_cplex_mip(puzzle, n, timeout):
+    from docplex.mp.model import Model
+    model = Model(name="sudoku")
+    model.parameters.timelimit = timeout
+    model.parameters.threads = 1
+    x = model.binary_var_cube(range(n), range(n), range(n), name="x")
+    for r in range(n):
+        for c in range(n):
+            model.add_constraint(model.sum(x[r, c, k] for k in range(n)) == 1)
+    for cells in regions(n):
+        for k in range(n):
+            model.add_constraint(model.sum(x[r, c, k] for r, c in cells) == 1)
+    for i, v in enumerate(puzzle):
+        if v:
+            model.add_constraint(x[i//n, i % n, v-1] == 1)
+    sol = model.solve(log_output=False)
+    detail = str(model.solve_details.status).lower() if model.solve_details else ""
+    ok = sol is not None
+    status = "SAT" if ok else "UNSAT" if "infeasible" in detail else "TIMEOUT"
+    grid = ([next(k+1 for k in range(n) if sol.get_value(x[r, c, k]) > .5)
+             for r in range(n) for c in range(n)] if ok else None)
+    return native_stats(status, n**3, 4*n*n+sum(map(bool, puzzle)),
+                        "binary MIP", grid), grid
+
+
+def run_cplex_cp(puzzle, n, timeout):
+    from docplex.cp.model import CpoModel, integer_var, all_diff
+    model = CpoModel()
+    x = [[integer_var(min=1, max=n, name=f"x_{r}_{c}")
+          for c in range(n)] for r in range(n)]
+    for cells in regions(n):
+        model.add(all_diff([x[r][c] for r, c in cells]))
+    for i, v in enumerate(puzzle):
+        if v:
+            model.add(x[i//n][i % n] == v)
+    result = model.solve(TimeLimit=timeout, Workers=1, LogVerbosity="Quiet")
+    ok = result is not None and result.is_solution()
+    detail = str(result.get_solve_status()).lower() if result else ""
+    status = "SAT" if ok else "UNSAT" if "infeasible" in detail else "TIMEOUT"
+    grid = ([result.get_value(x[r][c]) for r in range(n) for c in range(n)] if ok else None)
+    return native_stats(status, n*n, 3*n+sum(map(bool, puzzle)), "integer CP", grid), grid
 
 
 def worker(conf, items, timeout, out):
+    """Keep a SAT base CNF (and incremental solver) alive across all items of one size."""
     reusable = None
     try:
         n = items[0]["size"]
         t = time.perf_counter()
-        cnf = build_cnf(n, conf["encoding"]) if conf["method"] in (
-            "sat", "maxsat", "multiple", "incremental") else None
+        cnf = build_cnf(n, conf["encoding"]) if conf["method"] in SAT_METHODS else None
         if conf["method"] == "incremental":
             from pysat.solvers import Solver
             reusable = Solver(name=conf["solver"], bootstrap_with=cnf.clauses)
@@ -242,8 +337,16 @@ def worker(conf, items, timeout, out):
             t = time.perf_counter()
             try:
                 puzzle = inst["puzzle"]
-                if conf["method"] in ("sat", "maxsat", "multiple", "incremental"):
+                if conf["method"] in SAT_METHODS:
                     stats, solution = run_sat(puzzle, n, conf, cnf, reusable)
+                elif conf["method"] == "cpsat":
+                    stats, solution = run_cpsat(puzzle, n, timeout)
+                elif conf["method"] == "gurobi":
+                    stats, solution = run_gurobi(puzzle, n, timeout)
+                elif conf["method"] == "cplex_mip":
+                    stats, solution = run_cplex_mip(puzzle, n, timeout)
+                else:
+                    stats, solution = run_cplex_cp(puzzle, n, timeout)
                 clues = None if conf["method"] == "maxsat" else puzzle
                 if solution and not valid(solution, clues):
                     raise AssertionError("Solver returned an invalid Sudoku")
@@ -264,7 +367,7 @@ def worker(conf, items, timeout, out):
             reusable.delete()
 
 
-def configurations(profile):
+def configurations(profile, gurobi=False, cplex_mip=False, cplex_cp=False):
     # Config IDs also allow running one method/solver/encoding at a time.
     conf = [{"name": name, "method": m, "solver": s, "encoding": e}
             for name, m, s, e in [
@@ -274,18 +377,31 @@ def configurations(profile):
         ("maxsat", "maxsat", "cadical153", "seqcounter"),
         ("multiple", "multiple", "cadical153", "seqcounter"),
         ("incremental", "incremental", "cadical153", "seqcounter"),
-        ( "ortools", "-")]]
+        ("cpsat", "cpsat", "ortools", "-")]]
+    if profile == "quick":
+        conf = [c for c in conf if c["name"] != "sat-cadical-pair"]
+    for enabled, name, method, solver in [
+        (gurobi, "gurobi", "gurobi", "gurobi"),
+        (cplex_mip, "cplex-mip", "cplex_mip", "cplex"),
+        (cplex_cp, "cplex-cp", "cplex_cp", "cp_optimizer")]:
+        if enabled:
+            conf.append({"name": name, "method": method, "solver": solver, "encoding": "-"})
     return conf
 
 
 def incomplete(inst, conf, status, error="", cnf_info=None):
     n, method = inst["size"], conf["method"]
     givens = sum(bool(v) for v in inst["puzzle"])
-    is_sat = method in ("sat", "maxsat", "multiple", "incremental")
-    
-    variables = cnf_info[0] if cnf_info else ""
-    clauses = cnf_info[1]+(0 if method == "incremental" else givens) if cnf_info else ""
-    constraints, vtype = "", "boolean"
+    is_sat = method in SAT_METHODS
+    if is_sat:
+        variables = cnf_info[0] if cnf_info else ""
+        clauses = cnf_info[1]+(0 if method == "incremental" else givens) if cnf_info else ""
+        constraints, vtype = "", "boolean"
+    else:
+        variables = n*n if method in ("cpsat", "cplex_cp") else n**3
+        clauses = ""
+        constraints = (3*n if method in ("cpsat", "cplex_cp") else 4*n*n)+givens
+        vtype = "integer" if method in ("cpsat", "cplex_cp") else "binary MIP"
     return {"instance": inst["id"], "size": n, "givens": givens, "method": method,
             "solver": conf["solver"], "encoding": conf["encoding"],
             "status": status, "runtime_s": "", "setup_s": "", "variables": variables,
@@ -296,13 +412,18 @@ def incomplete(inst, conf, status, error="", cnf_info=None):
 
 
 def summarize(csv_path):
-    """Produce small per-configuration summaries, keeping failures explicit."""
-    with open(csv_path, newline="", encoding="utf-8") as f:
-        rows = list(csv.DictReader(f))
+    """Stream results into per-configuration summaries."""
     grouped = {}
-    for row in rows:
-        key = tuple(row[f] for f in ("size", "method", "solver", "encoding"))
-        grouped.setdefault(key, []).append(row)
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            key = tuple(row[name] for name in ("size", "method", "solver", "encoding"))
+            stats = grouped.setdefault(key, {"instances": 0, "runtime": 0.0,
+                                             "completed": 0, "status": Counter()})
+            stats["instances"] += 1
+            stats["status"][row["status"]] += 1
+            if row["status"] in ("SAT", "UNSAT") and row["runtime_s"]:
+                stats["runtime"] += float(row["runtime_s"])
+                stats["completed"] += 1
 
     columns = ["size", "method", "solver", "encoding", "instances", "sat", "unsat",
                "timeouts", "errors", "mean_runtime_s"]
@@ -310,15 +431,13 @@ def summarize(csv_path):
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=columns)
         writer.writeheader()
-        for key, group in sorted(grouped.items(), key=lambda item: (int(item[0][0]), item[0][1:])):
-            counts = Counter(r["status"] for r in group)
-            completed = [r for r in group if r["status"] in ("SAT", "UNSAT")]
-            durations = [float(r["runtime_s"]) for r in completed if r["runtime_s"]]
+        for key, stats in sorted(grouped.items(), key=lambda item: (int(item[0][0]), item[0][1:])):
+            counts = stats["status"]
             writer.writerow(dict(zip(columns[:4], key)) | {
-                "instances": len(group), "sat": counts["SAT"], "unsat": counts["UNSAT"],
+                "instances": stats["instances"], "sat": counts["SAT"], "unsat": counts["UNSAT"],
                 "timeouts": counts["TIMEOUT"], "errors": counts["ERROR"],
-                "mean_runtime_s": round(sum(durations) / len(durations), 6)
-                if durations else ""})
+                "mean_runtime_s": round(stats["runtime"] / stats["completed"], 6)
+                if stats["completed"] else ""})
     return path
 
 
@@ -329,7 +448,10 @@ def benchmark(args):
         items = [item for item in items if item["size"] == args.size]
     if not items:
         raise ValueError("No instances match --size")
-    configs = configurations(args.profile)
+    configs = configurations(args.profile,
+                             args.gurobi or args.config == "gurobi",
+                             args.cplex_mip or args.config == "cplex-mip",
+                             args.cplex_cp or args.config == "cplex-cp")
     if args.config is not None:
         configs = [c for c in configs if c["name"] == args.config]
     if not configs:
@@ -401,25 +523,32 @@ def main():
     prep = subs.add_parser("prepare", help="Sample zipped Kaggle CSV and generate larger puzzles")
     prep.add_argument("--archive", required=True, help="Path to original Kaggle ZIP")
     prep.add_argument("--out", default="data")
-    prep.add_argument("--n9", type=int, default=12)
-    prep.add_argument("--n16", type=int, default=10)
-    prep.add_argument("--n25", type=int, default=10)
-    prep.add_argument("--pool", type=int, default=10000)
+    prep.add_argument("--n9", type=int, default=100000)
+    prep.add_argument("--n16", type=int, default=1000)
+    prep.add_argument("--n25", type=int, default=1000)
+    prep.add_argument("--pool", type=int, default=1000000)
     prep.add_argument("--seed", type=int, default=42)
     prep.add_argument("--keep16", type=float, default=.60)
     prep.add_argument("--keep25", type=float, default=.72)
-    prep.add_argument("--unsat-controls", action="store_true")
+    prep.add_argument("--unsat-rate", type=float, default=.30,
+                      help="UNSAT fraction within generated 16x16 and 25x25 sets")
     bench = subs.add_parser("benchmark", help="Run solver comparisons and write CSV/JSONL")
     bench.add_argument("--data", default="data")
     bench.add_argument("--out", default="results")
     bench.add_argument("--timeout", type=float, default=30.0, help="Wall-time limit per instance")
     bench.add_argument("--profile", choices=["standard", "quick"], default="standard")
     bench.add_argument("--config", choices=["sat-cadical-seq", "sat-glucose-seq",
-        "sat-cadical-pair", "maxsat", "multiple", "incremental"], help="Run one configuration only")
+        "sat-cadical-pair", "maxsat", "multiple", "incremental", "cpsat",
+        "gurobi", "cplex-mip", "cplex-cp"], help="Run one configuration only")
     bench.add_argument("--size", type=int, choices=[9, 16, 25],
                        help="Run only this Sudoku board size")
+    bench.add_argument("--gurobi", action="store_true", help="Optional licensed Gurobi MIP")
+    bench.add_argument("--cplex-mip", action="store_true", help="Optional licensed CPLEX MIP")
+    bench.add_argument("--cplex-cp", action="store_true", help="Optional licensed CPLEX CP Optimizer")
     args = parser.parse_args()
     if args.command == "prepare":
+        if not 0 <= args.unsat_rate <= 1:
+            parser.error("--unsat-rate must be between 0 and 1")
         prepare(args)
     else:
         if args.timeout <= 0:

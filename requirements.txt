@@ -1,0 +1,4 @@
+python-sat>=1.8.dev13
+ortools>=9.10
+# Optional: gurobipy (requires a working Gurobi license)
+# Optional: docplex + cplex (for IBM CPLEX MIP), docplex + CP Optimizer executable (for CPLEX CP)

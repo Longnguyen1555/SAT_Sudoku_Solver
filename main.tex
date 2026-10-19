@@ -64,13 +64,13 @@
 \title[mode=title]{GIẢI SUDOKU BẰNG SAT VÀ CÁC PHƯƠNG PHÁP GIẢI CHÍNH XÁC}
 \tnotemark[1]
 \tnotetext[1]{Báo cáo Bài tập lớn số 1 -- Môn Các vấn đề hiện đại Khoa học máy tính; học kỳ I, năm học 2026--2027.}
-\author[1]{Họ và tên sinh viên (bổ sung)}
-\address[1]{Lớp: [BỔ SUNG] \quad -- \quad Mã sinh viên: [BỔ SUNG] \\ Giảng viên hướng dẫn: [BỔ SUNG]}
+\author[1]{Nguyễn Đức Long}
+\address[1]{Lớp: INT3011E 4 \quad -- \quad Mã sinh viên: 24021555 }
 
 \begin{abstract}
-Báo cáo mô tả chương trình giải Sudoku bằng SAT, MaxSAT, Multiple SAT, Incremental SAT, Gurobi MIP và CPLEX MIP. Thí nghiệm SAT cơ sở sử dụng ma trận cân bằng giữa hai solver CaDiCaL và Glucose với ba mã hóa AMO: Sequential Counter, Pairwise và Cardinality Network.
+Báo cáo mô tả chương trình giải Sudoku bằng SAT, MaxSAT, Multiple SAT, Incremental SAT, Gurobi MIP và CPLEX MIP. Thí nghiệm SAT cơ sở sử dụng hai solver CaDiCaL và Glucose với ba mã hóa AMO: Sequential Counter, Pairwise và Cardinality Network. Biến thể mới bổ sung các soft clause để ưu tiên đặt chữ số còn thiếu lớn vào vị trí gần tâm của từng khối $3\times3$.
 
-Bài tập sử dụng 1.000 Sudoku SAT kích thước $9\times9$ được lấy mẫu từ Kaggle và 100 control UNSAT có mâu thuẫn hàng. Lượt benchmark chính thức gồm 12.100 phép giải; cả 11 cấu hình đều phân loại đúng 1.000 SAT và 100 UNSAT, không có timeout hoặc lỗi. Trong sáu cấu hình SAT cơ sở, CaDiCaL nhanh nhất với Sequential Counter còn Glucose nhanh nhất với Pairwise trên lượt đo này.
+Dữ liệu gồm 1.000 Sudoku SAT $9\times9$ được giảm còn 16 clue để bảo đảm còn nhiều nghiệm và 100 control UNSAT có mâu thuẫn hàng. Snapshot mới gồm 12.100 phép giải; cả 11 cấu hình đều phân loại đúng toàn bộ dữ liệu, không có TIMEOUT hoặc ERROR. Trong các cấu hình SAT cơ sở, Glucose--Sequential Counter có runtime trung bình toàn bộ thấp nhất (14,304~ms) và nhanh hơn Gurobi 1,64 lần, CPLEX 2,81 lần. Trên 1.000 instance SAT, MaxSAT, Multiple SAT và Incremental SAT đều đạt cùng tổng điểm ưu tiên 113.552; runtime trung bình tương ứng là 106,657~ms, 1.818,190~ms và 1.411,537~ms.
 \end{abstract}
 
 \begin{keywords}
@@ -80,25 +80,10 @@ Sudoku \sep SAT encoding \sep CNF \sep MaxSAT \sep Multiple SAT \sep Incremental
 \maketitle
 
 \section{Giới thiệu}\label{sec:introduction}
-\subsection{Bối cảnh và yêu cầu bài tập}
-Sudoku là bài toán tìm cách điền giá trị vào một lưới ô vuông sao cho các ràng buộc trên hàng, cột và khối con đều được thỏa mãn. Bên cạnh những cách giải quay lui hoặc suy luận thông thường, Sudoku có thể mô hình hóa thành bài toán thỏa mãn mệnh đề (SAT), bài toán lập trình nguyên (MIP/ILP) hoặc lập trình ràng buộc (CP). Vì vậy, Sudoku phù hợp để thực hành quá trình chuyển đổi bài toán tổ hợp sang các mô hình giải chính xác, triển khai phần mềm và tổ chức thí nghiệm có thể tái lập.
+Sudoku là bài toán tìm cách điền giá trị vào một lưới ô vuông sao cho các ràng buộc trên hàng, cột và khối con đều được thỏa mãn. Bên cạnh những cách giải quay lui hoặc suy luận thông thường, Sudoku Puzzle có thể mô hình hóa thành bài toán thỏa mãn mệnh đề (SAT), bài toán lập trình nguyên (MIP/ILP) hoặc lập trình ràng buộc (CP). Vì vậy, Sudoku phù hợp để thực hành quá trình chuyển đổi bài toán tổ hợp sang các mô hình giải chính xác, triển khai phần mềm và tổ chức thí nghiệm có thể tái lập.
 
-Theo yêu cầu Bài tập lớn số 1 của học phần \cite{assignment}, người thực hiện cần xây dựng solver cho một bài toán logic, thực hiện SAT encoding, thử nghiệm trên ma trận kích thước lớn và đối chiếu với các hướng giải chính xác như CP, ILP. Tài liệu yêu cầu khuyến khích khảo sát những kỹ thuật mã hóa ràng buộc At-Least-One (ALO) và At-Most-One (AMO), cũng như chuẩn bị kết quả thực nghiệm và mã nguồn có thể kiểm chứng.
+Sinh viên đã xây dựng solver cho một bài toán logic, thực hiện SAT encoding, thử nghiệm trên ma trận kích thước lớn và đối chiếu với các hướng giải chính xác như CP, ILP. Trong phạm vi triển khai hiện tại, ràng buộc AMO được mã hóa bằng \emph{Sequential Counter}, \emph{Pairwise} hoặc \emph{Cardinality Network}. CaDiCaL và Glucose được đối chiếu trên cùng ba encoding; ba phương pháp MaxSAT, MultipleSAT, IncrementalSAT; Gurobi MIP và CPLEX MIP cung cấp các so sánh bổ sung.
 
-Trong phạm vi triển khai hiện tại, ràng buộc AMO được mã hóa bằng \emph{Sequential Counter}, \emph{Pairwise} hoặc \emph{Cardinality Network}. CaDiCaL và Glucose được đối chiếu trên cùng ba encoding; RC2, các chế độ SAT chuyên biệt, Gurobi MIP và CPLEX MIP cung cấp các góc nhìn bổ sung.
-
-\subsection{Mục tiêu và phạm vi triển khai}
-Các mục tiêu chính của bài tập gồm:
-\begin{itemize}
- \item Xây dựng mô hình và bộ thực nghiệm cho Sudoku $9\times9$.
- \item So sánh CaDiCaL và Glucose trên cùng ba encoding AMO.
- \item Cài đặt MaxSAT, Multiple SAT và Incremental SAT bằng Sequential Counter.
- \item Cài đặt Gurobi MIP và CPLEX MIP để đối chiếu.
- \item Tạo bộ instance cố định bằng hạt giống ngẫu nhiên (seed) và xuất kết quả theo từng cặp instance--cấu hình.
- \item Xác minh nghiệm bằng một hàm kiểm tra Sudoku độc lập với các solver.
-\end{itemize}
-
-Báo cáo này trình bày phương pháp, thiết kế thực nghiệm và kết quả đo của bài tập lớn; không nhằm đề xuất một thuật toán giải mới. Bố cục tham khảo cách tách phần mô hình, phương pháp và thực nghiệm của tài liệu mẫu do môn học cung cấp \cite{reportexample}, nhưng nội dung và cách diễn đạt được điều chỉnh cho phù hợp với quá trình cài đặt chương trình Sudoku.
 
 \section{Mô hình bài toán Sudoku}\label{sec:model}
 \subsection{Định nghĩa bài toán}
@@ -115,7 +100,7 @@ Dùng biến $x_{r,c,v}$ với $0\le r,c<n$ và $1\le v\le n$:
  \end{cases}
  \label{eq:variable}
 \end{equation}
-Số biến Boolean cơ sở bằng $n^3=729$. Tùy encoding, Sequential Counter và Cardinality Network còn tạo thêm biến phụ; Pairwise không cần biến phụ.
+Số biến Boolean cơ sở bằng $n^3=729$.
 
 \subsection{Bốn nhóm ràng buộc Exactly-One}
 Tất cả các quy tắc Sudoku được mô tả bằng bốn nhóm điều kiện \emph{Exactly-One}, viết tắt là EO:
@@ -127,8 +112,7 @@ Tất cả các quy tắc Sudoku được mô tả bằng bốn nhóm điều ki
 \end{align}
 Trong đó $B$ là một khối con $b\times b$. Công thức \eqref{eq:cell} bảo đảm mỗi ô có một giá trị; \eqref{eq:row} và \eqref{eq:column} bảo đảm một giá trị không lặp trên hàng, cột; \eqref{eq:block} áp dụng quy tắc tương tự cho khối con.
 
-Có tổng cộng $4n^2$ nhóm EO, mỗi nhóm gồm $n$ biến. Một clue $g$ tại ô $(r,c)$ được bổ sung thành mệnh đề đơn $(x_{r,c,g})$. Việc tách riêng phần quy tắc chung và các clue giúp tái sử dụng CNF cơ sở trong Incremental SAT.
-
+Có tổng cộng $4n^2$ nhóm EO, mỗi nhóm gồm $n$ biến. Một clue $g$ tại ô $(r,c)$ được bổ sung thành mệnh đề đơn $(x_{r,c,g})$.
 \section{Phương pháp mã hóa và giải}\label{sec:methods}
 \subsection{Chuyển đổi Exactly-One sang CNF}
 Với một nhóm biến $X=\{x_1,\ldots,x_n\}$, điều kiện EO được chia thành một ràng buộc At-Least-One (ALO) và một ràng buộc At-Most-One (AMO):
@@ -138,50 +122,60 @@ Với một nhóm biến $X=\{x_1,\ldots,x_n\}$, điều kiện EO được chia
 \end{align}
 ALO chỉ cần một mệnh đề có $n$ literal. Phần AMO được triển khai theo ba cách dưới đây bằng \texttt{CardEnc.atmost} của PySAT \cite{pysat}.
 
-\paragraph{Pairwise.}
+\paragraph{a, Pairwise.}
 Với mọi cặp $i<j$, phương pháp thêm mệnh đề $(\neg x_i\lor\neg x_j)$. Mỗi nhóm AMO cần $\binom{n}{2}$ mệnh đề nhị phân nhưng không tạo biến phụ.
 
-\paragraph{Sequential Counter.}
-Phương pháp này bổ sung biến phụ và chuyển điều kiện AMO thành hệ mệnh đề có kích thước tăng tuyến tính theo số biến đầu vào. Chương trình sử dụng \texttt{EncType.seqcounter}; phương pháp Sequential Counter được mô tả trong \cite{sinz2005}. Đối với mỗi nhóm, chương trình cấp phát ID biến phụ mới, bảo đảm không trùng với $n^3$ biến Sudoku cơ sở.
+\paragraph{b, Sequential Counter.}
+Phương pháp này bổ sung biến phụ và chuyển điều kiện AMO thành hệ mệnh đề có kích thước tăng tuyến tính theo số biến đầu vào. Chương trình sử dụng \texttt{EncType.seqcounter}; phương pháp Sequential Counter được mô tả trong \cite{sinz2005}.
+\paragraph{c, Cardinality Network.}
+Encoding \texttt{EncType.cardnetwrk} xây dựng mạng so sánh để biểu diễn ràng buộc cardinality..
 
-\paragraph{Cardinality Network.}
-Encoding \texttt{EncType.cardnetwrk} xây dựng mạng so sánh để biểu diễn ràng buộc cardinality. Cách này tạo nhiều biến và mệnh đề phụ hơn trên Sudoku $9\times9$, nhưng được giữ trong thí nghiệm để đánh giá ảnh hưởng của cấu trúc CNF thay vì suy đoán từ kích thước mô hình.
-
-Số biến và mệnh đề thực tế trong \texttt{results.csv} được lấy sau khi tạo CNF, không phải các cấu trúc nội bộ mà SAT solver tự tạo ra khi chạy.
-
-\subsection{MaxSAT: tối thiểu hóa số clue cần điều chỉnh}
-Khác với SAT thông thường, MaxSAT cho phép một phần yêu cầu không được thỏa mãn nhằm tối ưu một hàm mục tiêu. Trong cài đặt này, các ràng buộc cấu trúc Sudoku được giữ là \emph{hard clauses}, trong khi mỗi clue đầu vào là một \emph{soft unit clause} có trọng số 1. RC2 của PySAT được sử dụng để giải Weighted Partial MaxSAT.
-
-Với tập clue $\given$, mục tiêu là
+\subsection{MaxSAT}
+Mọi quy tắc Sudoku và mọi clue đầu vào đều là \emph{hard clauses}. Với mỗi khối $3\times3$, chín vị trí cục bộ được trải thành dãy
+\[
+00,01,02,10,11,12,20,21,22.
+\]
+Thứ tự ưu tiên từ tâm dạt ra hai phía là
+\[
+11,10,12,02,20,01,21,00,22.
+\]
+Chương trình bỏ các ô đã có clue khỏi dãy này, lấy các chữ số còn thiếu theo thứ tự giảm dần $9,8,\ldots,1$, rồi ghép lần lượt chữ số với vị trí. Mỗi cặp mục tiêu $(r,c,v)$ tạo một soft unit clause $(x_{r,c,v})$ có trọng số $w=v$. Do đó chữ số lớn vừa được ghép vào vị trí gần tâm trước, chịu mức phạt cao hơn nếu không đạt được.
+\\
+\\
+Gọi $P$ là tập cặp mục tiêu còn lại. RC2 của PySAT giải Weighted Partial MaxSAT với mục tiêu
 \begin{equation}
- \min \sum_{(r,c,g)\in\given}\bigl(1-x_{r,c,g}\bigr),
- \qquad\text{với toàn bộ ràng buộc Sudoku là hard.}
+ \min \sum_{(r,c,v)\in P} v\bigl(1-x_{r,c,v}\bigr),
+ \qquad\text{với quy tắc Sudoku và clue là hard.}
  \label{eq:maxsat}
 \end{equation}
-Giá trị tối ưu \texttt{maxsat\_cost} là số clue ít nhất cần thay đổi để có một bảng Sudoku hợp lệ. Trong chương trình, trường \texttt{status} là \texttt{SAT} khi cost bằng 0 và \texttt{UNSAT} khi cost lớn hơn 0, \emph{theo tính khả thi của toàn bộ clue gốc}. Điều này không có nghĩa RC2 không tìm được nghiệm: trường hợp cost dương vẫn có thể trả về một Sudoku hợp lệ sau khi nới lỏng clue. Do đó, cần đọc cùng lúc \texttt{status}, \texttt{maxsat\_cost} và lời giải trả về.
+Trường \texttt{maxsat\_cost} là tổng trọng số soft clause không thỏa; \texttt{preference\_score} là tổng trọng số đã thỏa; và \texttt{preference\_matches} là số cặp mục tiêu đã thỏa, không xét trọng số.
 
-\subsection{Multiple SAT: phát hiện nghiệm thứ hai}
-Multiple SAT được dùng để kiểm tra tính duy nhất của nghiệm bằng tối đa hai lần giải. Lần đầu giải CNF của Sudoku như SAT thông thường. Nếu tìm được nghiệm $s(r,c)$, chương trình thêm mệnh đề chặn:
+\subsection{Multiple SAT}
+Multiple SAT được định nghĩa là quá trình gọi SAT nhiều lần để tìm nghiệm có điểm preference tối ưu. Lần gọi đầu tiên giải CNF Sudoku với clue dưới dạng assumptions và cung cấp một nghiệm khả thi có điểm $L$. Các literal preference được lặp theo trọng số rồi đưa vào một totalizer; do đó điều kiện điểm ít nhất bằng $T$ có thể được biểu diễn thành một ràng buộc cardinality trên cùng CNF.
+
+Chương trình tìm kiếm nhị phân trong khoảng từ điểm nghiệm hiện tại đến một cận trên hợp lệ. Ở mỗi bước, CaDiCaL được gọi với một assumption bổ sung yêu cầu điểm ít nhất bằng ngưỡng giữa:
 \begin{equation}
- \bigvee_{r=0}^{n-1}\ \bigvee_{c=0}^{n-1}
- \neg x_{r,c,s(r,c)}.
- \label{eq:blocking}
+ \sum_{(r,c,v)\in P} v x_{r,c,v}\ge T.
+ \label{eq:multiple-bound}
 \end{equation}
-Mệnh đề này loại bỏ toàn bộ bảng nghiệm đã tìm được mà không loại bỏ các nghiệm khác chỉ vì khác biệt ở biến phụ. Sau đó solver được gọi lần thứ hai. Nếu lần giải thứ hai là SAT, bài toán có ít nhất hai nghiệm; nếu UNSAT, nghiệm đầu tiên là duy nhất. Việc tìm kiếm dừng sau tối đa hai nghiệm, không thực hiện đếm toàn bộ nghiệm.
+Nếu kết quả là SAT, nghiệm mới được giữ lại và cận dưới được tăng; nếu kết quả là UNSAT, ngưỡng đó không thể đạt và cận trên được giảm. Khi hai cận trùng nhau, nghiệm SAT tốt nhất được chứng minh tối ưu. Đây là tối ưu chính xác bằng các bài toán quyết định SAT lặp lại.
 
-Thời gian của cấu hình Multiple SAT có thể bao gồm hai lời gọi solver; vì vậy đây không phải phép đo thuần túy thời gian tìm một nghiệm như SAT cơ sở.
+\subsection{Incremental SAT:}
+Incremental SAT được dùng như một phương pháp tối ưu trên từng instance. Chương trình tạo một đối tượng CaDiCaL riêng cho instance, nạp CNF Sudoku và weighted totalizer giống Multiple SAT, rồi giữ nguyên đối tượng đó trong toàn bộ quá trình cải thiện. Clue vẫn được truyền dưới dạng assumptions và không được thay đổi.
 
-\subsection{Incremental SAT: tái sử dụng solver giữa các instance}
-Đối với những instance có cùng $n$ và cùng phương pháp encoding, các mệnh đề quy tắc Sudoku không đổi. Chương trình tạo CNF cơ sở một lần, nạp vào một đối tượng CaDiCaL và dùng \texttt{solve(assumptions=...)} để biểu diễn các clue khác nhau. Sau mỗi lần giải, đối tượng solver được giữ lại, trong khi assumptions của instance trước không bị biến thành các mệnh đề cố định.
-
-Incremental SAT ở đây là \textbf{tái sử dụng bộ giải giữa nhiều instance cùng kích thước}, không phải quy trình thêm dần clue vào một instance. Thời gian dựng CNF và khởi tạo solver dùng chung được ghi bằng \texttt{setup\_s}; thời gian xử lý từng instance được ghi ở \texttt{runtime\_s}. Khi phân tích, phải phân biệt chi phí chung với thời gian giải riêng lẻ, không cộng nhiều lần cùng một giá trị setup được lặp lại trong các bản ghi.
-
+Để có cận dưới tốt, chương trình thử lần lượt các literal preference theo trọng số giảm dần trên một solver phụ và giữ các literal còn khả thi. Sau đó, nếu nghiệm tốt nhất hiện tại có điểm $S_k$, solver tối ưu chính được bổ sung vĩnh viễn ràng buộc
+\begin{equation}
+ \sum_{(r,c,v)\in P} v x_{r,c,v}\ge S_k+1.
+ \label{eq:incremental-bound}
+\end{equation}
+Nếu lần giải kế tiếp là SAT, nghiệm mới có điểm lớn hơn và một bound mạnh hơn tiếp tục được thêm. Nếu là UNSAT, không tồn tại nghiệm tốt hơn nên nghiệm khả thi cuối cùng được chứng minh tối ưu. Quá trình cũng có thể dừng khi đạt cận trên hợp lệ. Khác với Multiple SAT dùng tìm kiếm nhị phân và các bound tạm thời dưới dạng assumptions, Incremental SAT tăng điểm từng bước và giữ lại bound đã thêm.
 \subsection{Gurobi MIP và CPLEX MIP}
 Các mô hình Gurobi MIP và CPLEX MIP sử dụng $n^3$ biến nhị phân cùng bốn nhóm ràng buộc tổng bằng 1 tương tự \eqref{eq:cell}--\eqref{eq:block}. Các backend này cần cài đặt engine và license tương ứng. Không gộp các ràng buộc MIP với số mệnh đề CNF vì chúng thuộc các dạng biểu diễn khác nhau.
 
 \section{Thiết kế thực nghiệm}\label{sec:experiment}
 \subsection{Nguồn dữ liệu và cách tạo instance}
-Các Sudoku SAT $9\times9$ được lấy mẫu từ bộ \emph{Sudoku} trên Kaggle \cite{kaggle_sudoku}. Chương trình đọc trực tiếp tệp \texttt{sudoku.csv} nằm trong ZIP, chọn mẫu với seed cố định và sử dụng lời giải tham chiếu để kiểm tra tính hợp lệ. Sau đó, 100 puzzle gốc khác nhau được sao chép; trong mỗi bản sao, hai clue đã cố định trên cùng một hàng được đặt bằng nhau. Mâu thuẫn trực tiếp này chứng minh control là UNSAT mà không cần dựa vào kết quả của solver.
+Các Sudoku SAT $9\times9$ được lấy mẫu từ bộ \emph{Sudoku} trên Kaggle \cite{kaggle_sudoku}. Chương trình đọc \texttt{sudoku.csv} trong ZIP, chọn mẫu với seed 42, rồi giữ ngẫu nhiên đúng 16 clue của mỗi puzzle và giữ lời giải tham chiếu để kiểm tra. 
+Để tạo 100 control UNSAT, chương trình sao chép 100 puzzle đã giảm clue, tìm một hàng có một clue cố định và một ô trống, rồi điền cùng giá trị vào ô trống. Như vậy mỗi control có 17 clue và chứa hai giá trị bằng nhau trên một hàng.
 
 \begin{table}[htbp]
 \centering
@@ -189,18 +183,16 @@ Các Sudoku SAT $9\times9$ được lấy mẫu từ bộ \emph{Sudoku} trên Ka
 \label{tab:dataset}
 \begin{tabularx}{\linewidth}{@{}lclX@{}}
 \toprule
-Kích thước & Số lượng & Nguồn & Đặc điểm\\
+Kích thước & Số lượng & Nguồn \\
 \midrule
-$9\times9$ SAT & 1.000 & Kaggle & Có nghiệm tham chiếu\\
-$9\times9$ UNSAT & 100 & Control tự tạo & Hai clue bằng nhau trên một hàng\\
+$9\times9$ SAT & 1.000 & Kaggle\\
+$9\times9$ UNSAT & 100 & Self-generated \\
 \midrule
-Tổng & 1.100 & Seed 42 & Lấy mẫu và trộn có thể tái lập\\
+Tổng & 1.100 & Seed 42 \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\subsection{Các cấu hình được lựa chọn}
-Bảng~\ref{tab:configs} nêu 11 cấu hình được chạy trên cùng 1.100 instance $9\times9$. Sáu dòng SAT cơ sở tạo thành thiết kế $2\times3$, cho phép giữ cố định encoding khi so sánh solver và giữ cố định solver khi so sánh encoding.
 
 \begin{table}[htbp]
 \centering
@@ -217,32 +209,27 @@ Mã cấu hình & Phương pháp / backend & Đặc điểm\\
 \texttt{sat-glucose-seq} & SAT / Glucose & Sequential Counter\\
 \texttt{sat-glucose-pair} & SAT / Glucose & Pairwise\\
 \texttt{sat-glucose-card} & SAT / Glucose & Cardinality Network\\
-\texttt{maxsat} & MaxSAT / RC2 + CaDiCaL & Soft clues\\
-\texttt{multiple} & Multiple SAT / CaDiCaL & Tối đa 2 nghiệm\\
-\texttt{incremental} & Incremental SAT / CaDiCaL & Assumptions\\
+\texttt{maxsat} & MaxSAT / RC2 + CaDiCaL & Soft preference, hard clues\\
+\texttt{multiple} & Multiple SAT / CaDiCaL & Tối ưu preference bằng SAT lặp\\
+\texttt{incremental} & Incremental SAT / CaDiCaL & Thêm dần bound tối ưu\\
 \texttt{gurobi} & Gurobi MIP & Biến nhị phân\\
 \texttt{cplex-mip} & CPLEX MIP & Biến nhị phân\\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-Nếu chạy đủ 1.100 instance với cả 11 cấu hình, số bản ghi kỳ vọng là $1.100\times11=12.100$. Các lượt chạy riêng từng phương pháp nên được lưu trong thư mục riêng để tránh ghi đè kết quả.
 
 \subsection{Môi trường và quy ước đo thời gian}
 Môi trường Python dùng cho lượt benchmark chính thức được ghi nhận như sau:
 \begin{itemize}
- \item CPU: \noteedit{tên CPU và số nhân}; RAM: \noteedit{dung lượng}.
- \item Hệ điều hành: \noteedit{phiên bản Windows}; Python 3.12.0.
+ \item CPU: \noteedit{Intel Core i7 6600U}; RAM: \noteedit{16GB}.
+ \item Hệ điều hành: \noteedit{Windows 10}; Python 3.12.0.
  \item PySAT 1.9.dev16, Gurobi 13.0.3, DOcplex 2.32.264 và CPLEX 22.2.0.0.
- \item Giới hạn thời gian mỗi instance: 30 giây; số lần chạy toàn bộ: 1.
+ \item Timeout instance: 30 giây.
 \end{itemize}
 
-Chương trình ghi hai loại thời gian. \texttt{setup\_s} là chi phí tạo CNF cơ sở, và với Incremental SAT còn bao gồm khởi tạo đối tượng solver dùng chung. \texttt{runtime\_s} là thời gian xử lý một instance: bao gồm tạo solver mới đối với Multiple SAT và MaxSAT, hoặc dựng mô hình và gọi solver đối với MIP. Thời gian chờ tối đa của một lượt chạy được cung cấp qua \texttt{--timeout}.
 
-Lưu ý rằng \texttt{runtime\_s} của Incremental SAT không tự bao gồm toàn bộ \texttt{setup\_s} vì chi phí đó được chia sẻ cho nhiều instance. Nếu cần so sánh tổng chi phí của một nhóm, phải cộng một lần chi phí chuẩn bị và tổng thời gian giải, đồng thời xem xét chi phí khởi tạo lại sau timeout.
 
-\subsection{Các chỉ số thu thập}\label{sec:metrics}
-Mỗi dòng trong \texttt{results.csv} tương ứng một cặp instance--cấu hình. Bảng~\ref{tab:metrics} giải thích những trường quan trọng được lưu để phục vụ phân tích.
 \begin{table}[htbp]
 \centering
 \caption{Các chỉ số ghi trong tệp kết quả}
@@ -256,104 +243,124 @@ Trường dữ liệu & Ý nghĩa\\
 \texttt{expected\_status} & Nhãn SAT/UNSAT được xác định từ nguồn dữ liệu.\\
 \texttt{correct\_status} & Kết quả solver có khớp nhãn kỳ vọng hay không.\\
 \texttt{runtime\_s} & Thời gian xử lý instance (giây).\\
-\texttt{setup\_s} & Thời gian chuẩn bị chung của cùng nhóm.\\
 \texttt{variables} & Số biến trong mô hình đầu vào.\\
 \texttt{clauses} & Số mệnh đề CNF đầu vào; không dùng cho MIP.\\
 \texttt{constraints} & Số ràng buộc của mô hình MIP.\\
-\texttt{solutions\_found} & Số nghiệm tìm được (tối đa 2 ở Multiple SAT).\\
-\texttt{unique} & Cờ nghiệm duy nhất theo lần giải thứ hai.\\
-\texttt{maxsat\_cost} & Số clue tối ưu cần thay đổi ở MaxSAT.\\
+\texttt{solutions\_found} & Số nghiệm khả thi được tìm trong quá trình giải hoặc tối ưu.\\
+\texttt{optimal} & Cờ xác nhận MaxSAT/Multiple/Incremental SAT đã chứng minh tối ưu.\\
+\texttt{maxsat\_cost} & Tổng trọng số preference không thỏa tại nghiệm tối ưu MaxSAT.\\
+\texttt{preference\_score} & Tổng trọng số preference được thỏa bởi nghiệm trả về.\\
+\texttt{preference\_matches} & Số cặp chữ số--vị trí ưu tiên được thỏa, không xét trọng số.\\
 \texttt{valid\_solution} & Kết quả xác thực nghiệm được giải mã.\\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-Các trường \texttt{variables} và \texttt{clauses} chỉ mô tả biểu diễn CNF đưa vào bộ giải. Với Sequential Counter và Cardinality Network, chúng bao gồm các biến và mệnh đề phụ; Pairwise không tạo biến phụ. Với MaxSAT, kích thước mô hình được ghi trước các cấu trúc nới lỏng nội bộ của RC2. Đối với MIP, trường \texttt{clauses} để trống; số ràng buộc được ghi tại \texttt{constraints}.
+\subsection{Kết quả so sánh thực nghiệm}\label{sec:results}
+Kết quả được lưu trong trong \texttt{results/preference\_1100} có đúng 12.100 dòng, tương ứng 11 cấu hình trên cùng 1.100 instance. Mỗi cấu hình trả đúng 1.000 kết quả SAT và 100 kết quả UNSAT; không có mismatch, TIMEOUT hoặc ERROR.
 
-Tệp \texttt{summary.csv} nhóm các kết quả theo kích thước, phương pháp, solver và encoding; thống kê số SAT, UNSAT, TIMEOUT, ERROR, số nhãn đúng, tổng số mẫu có nhãn, accuracy và thời gian trung bình. Các lượt timeout không được gộp vào số UNSAT và được tính là dự đoán sai nếu mẫu có nhãn kỳ vọng.
-
-\subsection{Quy trình thực nghiệm}
-Quy trình thực hiện gồm các bước:
-\begin{enumerate}
- \item Chuẩn bị \texttt{instances.jsonl} gồm 1.000 Sudoku SAT từ ZIP Kaggle và 100 control UNSAT có mâu thuẫn hàng.
- \item Kiểm tra dữ liệu đầu vào; chạy từng cấu hình với cùng dataset, giới hạn thời gian và máy thực nghiệm.
- \item Giải mã nghiệm, xác thực quy tắc Sudoku và kiểm tra clue gốc (trừ chế độ MaxSAT cho phép thay đổi clue).
- \item Xuất \texttt{results.csv}, \texttt{summary.csv}, \texttt{solutions.jsonl} rồi tổng hợp kết quả cho báo cáo.
-\end{enumerate}
-
-\subsection{Kết quả so sánh thực nghiệm}\label{sec:pending}
-Lượt chạy trong thư mục \texttt{results/run\_1100\_9x9} tạo đúng 12.100 dòng kết quả. Mỗi cấu hình phân loại đúng 1.000 SAT và 100 UNSAT so với nhãn được suy ra độc lập từ trường \texttt{source}; tổng số mismatch, TIMEOUT và ERROR đều bằng 0. Có 11.100 lời giải được ghi: 11.000 lời giải của các lượt SAT và 100 Sudoku được MaxSAT sửa từ control UNSAT.
+\subsubsection{So sánh Sequential Counter, Pairwise và Cardinality Network}
 
 \begin{table}[htbp]
 \centering
-\caption{So sánh solver và encoding trên 1.100 Sudoku $9\times9$}
+\caption{Kết quả, kích thước CNF và runtime của ba encoding SAT}
 \label{tab:sat-results}
-\small
-\begin{tabular}{@{}llrrr@{}}
+\scriptsize
+\begin{tabular}{@{}llcrrrr@{}}
 \toprule
-Solver & Encoding & Biến CNF & Mệnh đề cơ sở & Trung bình (ms)\\
+Solver & Encoding & Kết quả SAT/UNSAT & Biến & Mệnh đề & TB (ms) & P95 (ms)\\
 \midrule
-CaDiCaL & Sequential Counter & $3\,321$ & $7\,776$ & 16.873\\
-Glucose  & Sequential Counter & $3\,321$ & $7\,776$ & 17.579\\
-CaDiCaL & Pairwise            & 729       & $11\,988$ & 19.653\\
-Glucose  & Pairwise            & 729       & $11\,988$ & 15.974\\
-CaDiCaL & Cardinality Network & $12\,069$ & $17\,496$ & 33.658\\
-Glucose  & Cardinality Network & $12\,069$ & $17\,496$ & 32.527\\
+CaDiCaL & Sequential Counter   & $1\,000/100$ & $3\,321$  & $7\,776$  & 24.174 & 46.949\\
+Glucose & Sequential Counter   & $1\,000/100$ & $3\,321$  & $7\,776$  & \textbf{14.304} & \textbf{24.627}\\
+CaDiCaL & Pairwise             & $1\,000/100$ & 729        & $11\,988$ & 24.471 & 42.039\\
+Glucose & Pairwise             & $1\,000/100$ & 729        & $11\,988$ & 18.212 & 38.737\\
+CaDiCaL & Cardinality Network  & $1\,000/100$ & $12\,069$ & $17\,496$ & 48.016 & 104.151\\
+Glucose & Cardinality Network  & $1\,000/100$ & $12\,069$ & $17\,496$ & 34.150 & 73.234\\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Bảng~\ref{tab:sat-results} dùng số biến và mệnh đề của CNF quy tắc trước khi thêm clue; \texttt{results.csv} còn cộng các mệnh đề đơn ứng với trung bình 33.791 clue mỗi puzzle. Khi giữ encoding cố định, Glucose chậm hơn CaDiCaL 4.18\% với Sequential Counter, nhưng nhanh hơn 18.72\% với Pairwise và 3.36\% với Cardinality Network. Với CaDiCaL, Sequential Counter nhanh nhất; Pairwise chậm hơn 16.48\% và Cardinality Network chậm hơn 99.48\%. Với Glucose, Pairwise nhanh nhất, thấp hơn Sequential Counter 9.13\%, trong khi Cardinality Network chậm hơn Sequential Counter 85.03\%. Cardinality Network tạo CNF lớn nhất và có thời gian cao nhất trong các cấu hình đang xét, nhưng một lượt đo không đủ để khẳng định quan hệ nhân quả tổng quát.
+Số biến và mệnh đề trong Bảng~\ref{tab:sat-results} là của CNF quy tắc chung; 16 hoặc 17 clue được truyền qua assumptions nên không được cộng vào số mệnh đề. Sequential Counter tạo $3\,321$ biến và $7\,776$ mệnh đề. Pairwise không tạo biến phụ nên chỉ có 729 biến, nhưng cần $11\,988$ mệnh đề, nhiều hơn Sequential Counter 54,17\%. Cardinality Network tạo $12\,069$ biến và $17\,496$ mệnh đề, tương ứng gấp 3,63 lần số biến và 2,25 lần số mệnh đề của Sequential Counter.
+
+Khi gộp hai solver, runtime trung bình của Sequential Counter, Pairwise và Cardinality Network lần lượt là 19,239~ms, 21,342~ms và 41,083~ms. Pairwise chậm hơn Sequential Counter 10,93\% theo trung bình. Với CaDiCaL, Pairwise chỉ chậm hơn Sequential Counter 1,23\%; với Glucose, mức chậm hơn là 27,32\%. Như vậy Sequential Counter đứng đầu ở cả hai solver trong lượt chạy mới, nhưng khoảng cách với Pairwise phụ thuộc đáng kể vào solver. Cardinality Network chậm hơn Sequential Counter 113,54\% theo trung bình gộp; kích thước CNF lớn là một nguyên nhân hợp lý, dù dữ liệu hiện tại chưa đủ để khẳng định quan hệ nhân quả.
+
+Trong sáu tổ hợp, Glucose--Sequential Counter có cả runtime trung bình thấp nhất (14,304~ms) và P95 thấp nhất (24,627~ms). Cấu hình này nhanh hơn Glucose--Pairwise 3,908~ms, tương đương 21,46\% nếu lấy runtime Pairwise làm mốc.
+\subsubsection{So sánh MaxSAT, Multiple SAT và Incremental SAT}
 
 \begin{table}[htbp]
 \centering
-\caption{Kết quả các cấu hình bổ sung trên cùng bộ dữ liệu}
-\label{tab:other-results}
-\small
-\begin{tabular}{@{}lrrrr@{}}
+\caption{Kết quả, tổng kích thước mô hình trên 1.000 instance SAT và runtime}
+\label{tab:method-results}
+\scriptsize
+\begin{tabularx}{\linewidth}{@{}lXrrrrr@{}}
 \toprule
-Cấu hình & SAT & UNSAT & Timeout/Error & Trung bình (ms)\\
+Phương pháp & Tổng mệnh đề của 1.000 SAT & \shortstack{Kết quả\\SAT/UNSAT} & \shortstack{Tổng biến\\1.000 SAT} & \shortstack{TB tất cả\\(ms)} & \shortstack{TB SAT\\(ms)} & \shortstack{TB UNSAT\\(ms)}\\
 \midrule
-Incremental SAT & 1.000 & 100 & 0 & 1.550\\
-Multiple SAT    & 1.000 & 100 & 0 & 16.200\\
-MaxSAT          & 1.000 & 100 & 0 & 37.621\\
-Gurobi MIP      & 1.000 & 100 & 0 & 21.739\\
-CPLEX MIP       & 1.000 & 100 & 0 & 43.741\\
+MaxSAT & $7\,792\,000$ hard; $65\,000$ soft & $1\,000/100$ & $3\,321\,000$ & \textbf{106.657} & \textbf{116.384} & 9.389\\
+Multiple SAT & $63\,099\,223$ & $1\,000/100$ & $6\,056\,130$ & $1\,818.190$ & $1\,999.127$ & \textbf{8.811}\\
+Incremental SAT & $63\,104\,545$ & $1\,000/100$ & $6\,056\,130$ & $1\,411.537$ & $1\,551.731$ & 9.596\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+ MaxSAT có tổng cộng $3\,321\,000$ biến, $7\,792\,000$ hard clause và $65\,000$ soft clause. Multiple SAT có $6\,056\,130$ biến và $63\,099\,223$ mệnh đề; Incremental SAT có cùng $6\,056\,130$ biến và $63\,104\,545$ mệnh đề. Incremental nhiều hơn Multiple đúng 5.322 mệnh đề trên toàn bộ 1.000 instance SAT vì các bound cải thiện được thêm vĩnh viễn. 
+
+Cả ba phương pháp đều phân loại đúng $1\,000/100$ instance, không có TIMEOUT hoặc ERROR, đồng thời chứng minh tối ưu trên đủ 1.000 instance SAT. MaxSAT nhanh nhất với 106,657~ms trung bình; Incremental SAT cần 1.411,537~ms và Multiple SAT cần 1.818,190~ms. Vì vậy MaxSAT nhanh hơn Incremental SAT 13,23 lần và Multiple SAT 17,05 lần; Incremental SAT nhanh hơn Multiple SAT 22,37\%. Trên control UNSAT, cả ba chỉ cần khoảng 9~ms vì phát hiện bất khả thi trước giai đoạn tối ưu. 
+\begin{table}[htbp]
+\centering
+\caption{Tổng chất lượng preference trên 1.000 instance SAT}
+\label{tab:preference-results}
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Phương pháp & \shortstack{Tổng số\\cặp thỏa} & \shortstack{Tổng điểm\\có trọng số} & \shortstack{Tỷ lệ tổng điểm\\(\%)}\\
+\midrule
+MaxSAT          & $21\,841$ & $113\,552$ & 34.97\\
+Multiple SAT    & $21\,839$ & $113\,552$ & 34.97\\
+Incremental SAT & $21\,852$ & $113\,552$ & 34.97\\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Các số ở Bảng~\ref{tab:other-results} không phải một đối chứng ngang hàng hoàn toàn: Incremental SAT tái sử dụng solver và không tính chi phí setup vào từng instance; Multiple SAT có thể gọi solver lần hai; MaxSAT giải bài toán tối ưu; còn hai backend MIP dùng biểu diễn khác CNF. Đối với 100 control, MaxSAT đều có chi phí tối ưu bằng 1: trạng thái được ghi là UNSAT theo toàn bộ clue gốc, nhưng RC2 vẫn trả về một Sudoku hợp lệ sau khi bỏ qua tối thiểu một clue. Vì vậy bảng này chỉ mô tả kết quả đo, trong khi kết luận trực tiếp về solver/encoding dựa chủ yếu vào ma trận cân bằng ở Bảng~\ref{tab:sat-results}.
+Tổng trọng số  của toàn bộ soft clause là 324.713; cả ba phương pháp cùng đạt 113.552 điểm, tương đương 34,97\%. Phần trọng số không thỏa là 211.161, đúng bằng tổng \texttt{maxsat\_cost} của MaxSAT, và cả ba phương pháp đã chứng minh 113.552 là tổng điểm tối ưu.
 
-\section{Kiểm tra tính đúng đắn và giới hạn}\label{sec:validation}
-\subsection{Kiểm tra đầu vào và lời giải}
-Chương trình kiểm tra kích thước mảng đầu vào là $n^2$, $n$ là số chính phương và mọi giá trị thuộc $\{0,1,\ldots,n\}$. Với một nghiệm đầy đủ, hàm xác thực kiểm tra mỗi hàng, cột và khối có đúng tập giá trị $\{1,\ldots,n\}$. SAT cơ sở, Multiple SAT, Incremental SAT, Gurobi và CPLEX phải giữ nguyên clue. Riêng với MaxSAT, số clue khác biệt giữa nghiệm và đề bài phải bằng chi phí tối ưu \texttt{maxsat\_cost} do RC2 trả về.
+Kiểm tra theo từng instance xác nhận không có sai khác \texttt{preference\_score} giữa MaxSAT, Multiple SAT và Incremental SAT. Tổng \texttt{preference\_matches} lần lượt là 21.841, 21.839 và 21.852, đồng thời có 103/1.000 instance mà số cặp thỏa khác nhau. Incremental SAT thỏa nhiều cặp hơn  nhưng không tốt hơn theo hàm mục tiêu, vì các cặp có trọng số khác nhau và tổng điểm của ba phương pháp hoàn toàn bằng nhau. Sự khác biệt chỉ cho thấy tồn tại nhiều nghiệm đồng hạng tối ưu.
 
-Project có các tệp kiểm thử trong thư mục \texttt{tests}. Mười kiểm thử đã chạy thành công trong môi trường solver, bao gồm kiểm tra cách tạo control và cả sáu tổ hợp solver--encoding trên trường hợp SAT và UNSAT. Lượt benchmark chính thức xác nhận 12.100/12.100 trạng thái khớp nhãn kỳ vọng và 11.100 lời giải được trả về đều hợp lệ.
+\subsubsection{So sánh cấu hình SAT nhanh nhất với Gurobi và CPLEX}
 
-\subsection{Các giới hạn khi diễn giải số liệu}
-\begin{itemize}
- \item MaxSAT và Multiple SAT giải các nhiệm vụ khác nhau: tối thiểu hóa clue vi phạm và tìm tối đa hai nghiệm. Không kết luận phương pháp nào nhanh hơn chỉ từ thời gian tổng khi mục tiêu không đồng nhất.
- \item Incremental SAT tái sử dụng solver giữa các instance. Cần tính riêng chi phí chuẩn bị và lưu ý thứ tự instance có thể ảnh hưởng đến trạng thái solver được tái sử dụng.
- \item Số \texttt{clauses} của CNF không thể đối chiếu trực tiếp theo tỷ lệ 1:1 với \texttt{constraints} của MIP.
- \item Các control UNSAT có mâu thuẫn clue trực tiếp nên phù hợp để kiểm tra tính đúng đắn, nhưng không đại diện cho mọi dạng instance UNSAT khó.
- \item Đây là một lượt benchmark. Để tăng độ tin cậy nên cố định tải hệ thống, lặp lại phép đo với nhiều seed và báo cáo thêm độ phân tán.
-\end{itemize}
+\begin{table}[htbp]
+\centering
+\caption{Glucose--Sequential Counter so với hai mô hình MIP}
+\label{tab:sat-vs-mip}
+\scriptsize
+\begin{tabularx}{\linewidth}{@{}lXrrrrr@{}}
+\toprule
+Cấu hình & Biểu diễn đầu vào & Kết quả SAT/UNSAT & Biến & TB tất cả (ms) & TB SAT (ms) & TB UNSAT (ms)\\
+\midrule
+Glucose--Sequential Counter & $7\,776$ mệnh đề CNF & $1\,000/100$ & $3\,321$ & \textbf{14.304} & \textbf{14.621} & \textbf{11.125}\\
+Gurobi MIP & 340/341 ràng buộc tuyến tính & $1\,000/100$ & 729 & 23.528 & 24.318 & 15.626\\
+CPLEX MIP & 340/341 ràng buộc tuyến tính & $1\,000/100$ & 729 & 40.164 & 40.756 & 34.237\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Glucose--Sequential Counter được chọn vì có runtime trung bình thấp nhất trong sáu cấu hình SAT. Trên toàn bộ 1.100 instance, nó nhanh hơn Gurobi 1,64 lần và CPLEX 2,81 lần; tương đương giảm runtime lần lượt 39,20\% và 64,39\%. Mô hình SAT có 729 biến quyết định và 2.592 biến phụ, còn hai mô hình MIP có 729 biến quyết định; $7\,776$. Vì vậy, kết luận phù hợp là SAT chuyên dụng hiệu quả hơn trong cài đặt và dữ liệu này, không phải CNF luôn ưu việt hơn MIP.
+
+\subsubsection{Đánh giá tổng hợp}
+
+Kết quả của biến thể ràng buộc đã cho ta thấy sự khác biết giữa các cấu hình. Đối với giải Sudoku thông thường không có mục tiêu preference, Glucose--Sequential Counter là cấu hình nhanh nhất; encoding này cũng có runtime gộp thấp nhất và ít mệnh đề hơn Pairwise. Khi cần tối ưu preference, cả ba phương pháp đạt cùng điểm tối ưu trên từng instance, nhưng RC2/MaxSAT nhanh hơn rõ rệt; Incremental SAT đứng thứ hai và Multiple SAT chậm nhất. Cardinality Network không đem lại lợi ích về tốc độ trong thí nghiệm này; Gurobi và CPLEX đều chính xác nhưng chậm hơn cấu hình SAT cơ sở tốt nhất.
 
 \section{Kết luận và hướng hoàn thiện}\label{sec:conclusion}
-Trong phạm vi Bài tập lớn số 1, bộ mã nguồn đã triển khai ma trận sáu cấu hình SAT từ hai solver và ba encoding, cùng MaxSAT, Multiple SAT, Incremental SAT, Gurobi MIP và CPLEX MIP trên 1.000 instance SAT và 100 control UNSAT kích thước $9\times9$. Các phương pháp dùng chung định dạng kết quả để hỗ trợ đối chiếu thực nghiệm.
+Trong phạm vi thực nghiệm, mã nguồn triển khai sáu cấu hình SAT từ hai solver và ba encoding, cùng MaxSAT, Multiple SAT, Incremental SAT, Gurobi MIP và CPLEX MIP trên 1.000 instance SAT và 100 control UNSAT $9\times9$. Biến thể Sudoku và clue là ràng buộc cứng, chỉ dùng soft clause để lựa chọn giữa các nghiệm hợp lệ.
 
-Trên bộ dữ liệu và môi trường đã đo, cả 11 cấu hình đều phân loại đúng toàn bộ SAT/UNSAT. CaDiCaL đạt thời gian thấp nhất với Sequential Counter, còn Glucose đạt thời gian thấp nhất với Pairwise; Cardinality Network chậm nhất với cả hai solver. Kết luận hiệu năng này chỉ áp dụng cho 1.100 puzzle và một lượt chạy hiện tại. Hướng hoàn thiện tiếp theo là lặp benchmark, bổ sung các dạng UNSAT khó hơn, ghi đầy đủ cấu hình phần cứng và đánh giá thêm độ phân tán trước khi khái quát hóa kết quả.
+Các cấu hình đều phân loại đúng toàn bộ SAT/UNSAT. Sequential Counter có runtime gộp thấp nhất; Glucose--Sequential Counter là tổ hợp SAT cơ sở nhanh nhất với 14,304~ms, còn Cardinality Network lớn hơn và chậm hơn rõ rệt. Cấu hình SAT tốt nhất nhanh hơn Gurobi 1,64 lần và CPLEX 2,81 lần.
 
-\section*{Khả năng truy cập mã nguồn và dữ liệu}
-Mã nguồn, các lệnh chạy và tệp đầu ra được tổ chức trong project Sudoku Assignment 1. Địa chỉ repository công khai: \noteedit{liên kết GitHub sau khi tải mã nguồn lên}. Nguồn Sudoku $9\times9$ tham khảo từ Kaggle \cite{kaggle_sudoku} và được lấy mẫu bằng seed cố định.
+Multiple SAT tìm ngưỡng tối ưu bằng tìm kiếm nhị phân, còn Incremental SAT thêm ràng buộc buộc nghiệm sau tốt hơn nghiệm trước. Cả hai đạt cùng tổng điểm trọng số tối ưu 113.552 như MaxSAT và bằng nhau trên từng instance. Về runtime, MaxSAT nhanh nhất với 106,657~ms; Incremental SAT đứng thứ hai với 1.411,537~ms và Multiple SAT chậm nhất với 1.818,190~ms. Như vậy RC2/MaxSAT là lựa chọn tốt nhất khi cần tối ưu preference trong cài đặt hiện tại, còn Glucose--Sequential Counter phù hợp nhất khi chỉ cần tìm một nghiệm. Hướng hoàn thiện tiếp theo là xây dựng các hàm mục tiêu mới phù hợp với SUDOKU và chạy thực nghiệm trên ma trận lớn hơn.
+
+\section*{Mã nguồn và dữ liệu}
+Mã nguồn, các lệnh chạy và tệp đầu ra được tổ chức trong project Sudoku Assignment 1. Địa chỉ repository công khai: \noteedit{https://github.com/Longnguyen1555/SAT\_Sudoku\_Solver}. Nguồn Sudoku $9\times9$ tham khảo từ Kaggle \cite{kaggle_sudoku} và được lấy mẫu bằng seed cố định.
 
 \begin{thebibliography}{9}
-\bibitem{assignment}
-Ban tổ chức học phần (2026), \textit{Yêu cầu Bài tập lớn số 1 -- Môn Các vấn đề hiện đại Khoa học máy tính}, học kỳ I, năm học 2026--2027.
-
-\bibitem{reportexample}
-Pham Quang Minh, Dao Xuan Nghia và To Van Khanh (2026), \textit{Exact SAT Solving for the Two-Dimensional Bandwidth Minimization Problem}, tài liệu mẫu do học phần cung cấp.
 
 \bibitem{kaggle_sudoku}
 Bryan Park, \textit{Sudoku Dataset}, Kaggle, \url{https://www.kaggle.com/datasets/bryanpark/sudoku}.
@@ -367,37 +374,4 @@ Carsten Sinz (2005), ``Towards an Optimal CNF Encoding of Boolean Cardinality Co
 \end{thebibliography}
 
 \appendix
-\section{Lệnh tái lập thực nghiệm}\label{app:commands}
-Tại thư mục chứa \texttt{main.py}, cài đặt thư viện và chuẩn bị dữ liệu:
-\begin{lstlisting}
-python -m pip install -r requirements.txt
-python main.py prepare --archive "archive (1).zip" --out data_1100 --n9 1000 --n-unsat 100 --seed 42
-\end{lstlisting}
-Có thể chạy riêng từng cấu hình SAT trên 1.100 instance $9\times9$ trong \texttt{data\_1100}:
-\begin{lstlisting}
-python main.py benchmark --data data_1100 --config sat-cadical-seq --out results/sat-cadical-seq --timeout 30
-python main.py benchmark --data data_1100 --config sat-cadical-pair --out results/sat-cadical-pair --timeout 30
-python main.py benchmark --data data_1100 --config sat-cadical-card --out results/sat-cadical-card --timeout 30
-python main.py benchmark --data data_1100 --config sat-glucose-seq --out results/sat-glucose-seq --timeout 30
-python main.py benchmark --data data_1100 --config sat-glucose-pair --out results/sat-glucose-pair --timeout 30
-python main.py benchmark --data data_1100 --config sat-glucose-card --out results/sat-glucose-card --timeout 30
-\end{lstlisting}
-Các cấu hình bổ sung được chạy bằng:
-\begin{lstlisting}
-python main.py benchmark --data data_1100 --config maxsat --out results/maxsat --timeout 30
-python main.py benchmark --data data_1100 --config multiple --out results/multiple --timeout 30
-python main.py benchmark --data data_1100 --config incremental --out results/incremental --timeout 30
-python main.py benchmark --data data_1100 --config gurobi --out results/gurobi --timeout 30
-python main.py benchmark --data data_1100 --config cplex-mip --out results/cplex-mip --timeout 30
-\end{lstlisting}
-Chạy toàn bộ 11 cấu hình và kiểm thử:
-\begin{lstlisting}
-python main.py benchmark --data data_1100 --out results/run_1100_9x9 --timeout 30
-python -m unittest discover -s tests -v
-\end{lstlisting}
-Các cấu hình \texttt{gurobi} và \texttt{cplex-mip} cần môi trường và license tương ứng. Nên dùng thư mục kết quả khác nhau nếu thay đổi thời gian chạy hoặc danh sách instance.
-
-\section{Hướng dẫn hoàn thiện báo cáo}\label{app:todo}
-Trước khi nộp, cần cập nhật thông tin sinh viên, CPU, RAM, phiên bản Windows và liên kết GitHub; sau đó đối chiếu các bảng và công thức với phiên bản mã nguồn cuối cùng. Nếu chạy lại benchmark, phải cập nhật số liệu ở mục~\ref{sec:pending} từ đúng thư mục kết quả mới, không trộn các lượt chạy.
-
 \end{document}

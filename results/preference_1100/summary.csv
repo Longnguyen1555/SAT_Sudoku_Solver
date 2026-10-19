@@ -1,0 +1,12 @@
+size,method,solver,encoding,instances,sat,unsat,timeouts,errors,correct,labeled,accuracy,mean_runtime_s
+9,cplex_mip,cplex,-,1100,1000,100,0,0,1100,1100,1.0,0.040164
+9,gurobi,gurobi,-,1100,1000,100,0,0,1100,1100,1.0,0.023528
+9,incremental,cadical153,seqcounter,1100,1000,100,0,0,1100,1100,1.0,1.411537
+9,maxsat,cadical153,seqcounter,1100,1000,100,0,0,1100,1100,1.0,0.106657
+9,multiple,cadical153,seqcounter,1100,1000,100,0,0,1100,1100,1.0,1.81819
+9,sat,cadical153,cardinality,1100,1000,100,0,0,1100,1100,1.0,0.048016
+9,sat,cadical153,pairwise,1100,1000,100,0,0,1100,1100,1.0,0.024471
+9,sat,cadical153,seqcounter,1100,1000,100,0,0,1100,1100,1.0,0.024174
+9,sat,glucose4,cardinality,1100,1000,100,0,0,1100,1100,1.0,0.03415
+9,sat,glucose4,pairwise,1100,1000,100,0,0,1100,1100,1.0,0.018212
+9,sat,glucose4,seqcounter,1100,1000,100,0,0,1100,1100,1.0,0.014304

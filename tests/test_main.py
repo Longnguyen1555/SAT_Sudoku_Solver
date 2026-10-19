@@ -5,19 +5,11 @@ import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from main import (generate, make_unsat, valid, groups, lit, clue_literals,
+from main import (make_unsat, valid, groups, lit, clue_literals,
                   configurations, summarize)
 
 
 class Tests(unittest.TestCase):
-    def test_generation(self):
-        for n in (9,):
-            for seed in range(5):
-                p, s = generate(n, random.Random(seed), .70)
-                self.assertTrue(valid(s, p))
-                self.assertEqual(len(p), n*n)
-                self.assertEqual(sum(x != 0 for x in p), round(.70*n*n))
-
     def test_groups_and_lit(self):
         for n in (4, 9):
             gg = list(groups(n))
@@ -28,7 +20,8 @@ class Tests(unittest.TestCase):
             self.assertEqual(lit(n, 0, 0, 1), 1)
 
     def test_unsat_control(self):
-        puzzle, solution = generate(9, random.Random(7), .70)
+        solution = [((r*3+r//3+c) % 9)+1 for r in range(9) for c in range(9)]
+        puzzle = [v if i % 3 else 0 for i, v in enumerate(solution)]
         item = {"id": "s9_test", "size": 9, "puzzle": puzzle,
                 "reference_solution": solution, "source": "kaggle"}
         control = make_unsat(item)
